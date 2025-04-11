@@ -9,6 +9,10 @@ import fcntl
 import site
 import re
 import pathlib
+import codecs
+import pandas as pd
+import json
+import glob # Import glob for file searching
 
 def cleanup():
     print("Cleanup: Starting cleanup process")
@@ -74,15 +78,22 @@ def release_lock(lock_fd):
 
 from PySide6.QtWidgets import (QApplication, QMainWindow, QPushButton, QVBoxLayout, QHBoxLayout,
                               QLabel, QFileDialog, QWidget, QProgressBar, QDialog, QGridLayout, QTextEdit, QScrollArea, QMessageBox,
-                              QFrame)
+                              QFrame, QSizePolicy)
 from PySide6.QtCore import Qt, QTimer, QProcess
 
 # --- Helper Function for Parsing Markdown Criteria (adapted from process_ocr.py) ---
 
 def parse_confidence_display(item_str):
     """Extracts keyword/pattern and confidence level for display."""
-    # Simpler parsing just to get the string as stored
-    return item_str.strip().strip('\'"')
+    # Returns the string as it should appear in the text box
+    # REVERTED: Simply strip outer quotes, display raw string from MD
+    print(f"DEBUG [parse_confidence_display] Input: {repr(item_str)}")
+    original_item_str = item_str.strip()
+    # item_str_stripped = original_item_str.strip('\'"')
+    # Just strip whitespace, keep original quotes from the list item
+    final_str = original_item_str
+    print(f"DEBUG [parse_confidence_display] Returning raw: {repr(final_str)}")
+    return final_str
 
 def parse_md_section_display(md_content, variable_name):
     """
@@ -148,9 +159,11 @@ def load_criteria_from_md(md_file_path):
 # --- Criteria Editor Dialog ---
 
 class CriteriaEditorDialog(QDialog):
-    def __init__(self, criteria_data, parent=None):
+    def __init__(self, criteria_data, md_file_path, parent=None):
         super().__init__(parent)
         self.criteria_data = criteria_data
+        self.md_file_path = md_file_path # Store path for saving
+        self.text_edits = {} # Initialize the dictionary here
         self.setWindowTitle("View/Edit Detection Criteria")
         self.setMinimumSize(800, 600)
         self.initUI()
@@ -244,11 +257,19 @@ class CriteriaEditorDialog(QDialog):
         scroll_area.setWidget(content_widget)
         main_layout.addWidget(scroll_area)
 
-        # Add a close button
+        # Add Save and Close buttons
         button_layout = QHBoxLayout()
         button_layout.addStretch()
+        
+        # --- Re-add Save Button --- 
+        save_button = QPushButton("Save")
+        save_button.clicked.connect(self.save_criteria)
+        save_button.setDefault(True) # Make it the default button
+        button_layout.addWidget(save_button)
+        # --- End Re-add Save Button ---
+        
         close_button = QPushButton("Close")
-        close_button.clicked.connect(self.accept) # QDialog's accept() closes it
+        close_button.clicked.connect(self.reject) # Use reject for closing without saving
         button_layout.addWidget(close_button)
         main_layout.addLayout(button_layout)
 
@@ -281,13 +302,159 @@ class CriteriaEditorDialog(QDialog):
         msg_box.setMinimumSize(600, 400) 
         msg_box.exec()
 
+    # --- Save Logic Implementation (Validation Removed) ---
+
+    # REMOVED: _parse_regex_for_validation
+    # REMOVED: _validate_criteria
+    # REMOVED: _update_borders
+
+    def _get_data_from_widgets(self):
+        """Extracts the current data from all QTextEdit widgets."""
+        # Initialize the nested dictionary structure
+        new_criteria_data = {tt: {st: {} for st in ["Keywords", "Patterns"]} for tt in ["Skin Test", "Blood Test", "X-Ray"]}
+        
+        # Iterate through the stored text edit widgets
+        for key, widget in self.text_edits.items():
+            test_type, source_type, category = key
+            # Get text, split into lines, remove empty lines and strip whitespace
+            lines = [line.strip() for line in widget.toPlainText().split('\n') if line.strip()]
+            
+            # Ensure nested dictionaries exist (should already from initialization)
+            if test_type not in new_criteria_data:
+                 new_criteria_data[test_type] = {st: {} for st in ["Keywords", "Patterns"]}
+            if source_type not in new_criteria_data[test_type]:
+                 new_criteria_data[test_type][source_type] = {}
+                 
+            # Assign the lines to the correct category
+            new_criteria_data[test_type][source_type][category] = lines
+            
+        return new_criteria_data
+
+    def _format_data_for_save(self, new_criteria_data):
+        """Formats the extracted data into Python dictionary strings."""
+        formatted_strings = {}
+        # Define maps here, where they are used
+        test_type_map = {"Skin Test": "skin_test", "Blood Test": "blood_test", "X-Ray": "xray"}
+        source_type_map = {"Keywords": "keywords", "Patterns": "patterns"}
+        categories = ["Test", "Process", "Administration", "Documentation"] # Fixed order
+
+        for test_type_disp, test_type_var in test_type_map.items():
+            for source_type_disp, source_type_var in source_type_map.items():
+                variable_name = f"{test_type_var}_{source_type_var}"
+                current_data = new_criteria_data.get(test_type_disp, {}).get(source_type_disp, {})
+                
+                lines_out = [] # Initialize list for the current variable block
+                lines_out.append(f"{variable_name} = {{")
+                
+                category_added = False
+                for category in categories: # Re-add loop over categories
+                    items = current_data.get(category, []) # Fetch items for the category
+                    
+                    if category_added: # Add comma before next category if not the first
+                         lines_out[-1] = lines_out[-1].rstrip(',') + ','
+                    lines_out.append(f'    "{category}": [')
+                    item_added = False
+                    for item in items: # Now iterate through the fetched items
+                        if item_added: # Add comma before next item
+                            lines_out[-1] = lines_out[-1].rstrip(',') + ','
+                        
+                        # REVERTED: No special formatting, just use repr
+                        lines_out.append(f'        {repr(item)},')
+                        item_added = True
+                    # Remove trailing comma from the last item if any items were added
+                    if item_added:
+                        lines_out[-1] = lines_out[-1].rstrip(',') 
+                    lines_out.append('    ]') # Closing bracket for category list
+                    category_added = True
+
+                # Add trailing comma for the last category
+                if category_added:
+                     lines_out[-1] += ','
+
+                lines_out.append(f"}}") # Closing brace for the variable
+                formatted_strings[variable_name] = '\n'.join(lines_out)
+        return formatted_strings
+
+    def _write_to_markdown(self, formatted_strings):
+        """Writes the formatted dictionary strings back to the markdown file, replacing existing blocks."""
+        try:
+            # Read the entire file content first
+            with open(self.md_file_path, 'r', encoding='utf-8') as f:
+                md_content = f.read()
+            original_content = md_content # Keep a copy for comparison
+
+            # Iterate and replace each variable block
+            for variable_name, new_dict_string in formatted_strings.items():
+                print(f"Attempting to replace: {variable_name}")
+                # Regex to find the specific variable assignment block precisely
+                # Looks for variable_name = { potentially spanning multiple lines } including the outer braces
+                pattern = re.compile(
+                    rf'^{re.escape(variable_name)}\s*=\s*{{.*?^\s*}}',
+                    re.DOTALL | re.MULTILINE
+                )
+
+                # Replace the entire matched block (including variable name and braces) with the new string
+                md_content, num_replacements = pattern.subn(new_dict_string, md_content, count=1)
+
+                if num_replacements == 0:
+                     print(f"  Warning: Variable block for '{variable_name}' not found using pattern in {self.md_file_path}. Cannot update.")
+                     # Consider appending if not found, but that could break structure. For now, skip.
+                else:
+                     print(f"  Successfully replaced block for {variable_name}.")
+
+            # Only write if content actually changed to avoid unnecessary modification time updates
+            if md_content != original_content:
+                print(f"Content changed, writing to {self.md_file_path}")
+                with open(self.md_file_path, 'w', encoding='utf-8') as f:
+                    f.write(md_content)
+                print(f"Successfully saved changes.")
+                return True
+            else:
+                 print("No changes detected. File not modified.")
+                 return True # Still considered success as no save was needed
+
+        except FileNotFoundError:
+             print(f"Error: File not found for writing: {self.md_file_path}")
+             return False
+        except IOError as e:
+            print(f"Error writing to file {self.md_file_path}: {e}")
+            return False
+        except Exception as e:
+            print(f"An unexpected error occurred during file write: {e}")
+            return False
+
+    def save_criteria(self):
+        """Saves the criteria from the text edits to the markdown file (NO validation)."""
+        print("Proceeding with save (no validation)...")
+        # is_valid, invalid_widgets = self._validate_criteria() # REMOVED
+        # self._update_borders(invalid_widgets) # REMOVED
+        
+        # Always assume valid and save
+        try:
+            current_data = self._get_data_from_widgets()
+            formatted_data = self._format_data_for_save(current_data)
+            
+            if self._write_to_markdown(formatted_data):
+                QMessageBox.information(self, "Save Successful", "Criteria successfully saved.")
+                self.accept() # Close dialog on successful save
+            else:
+                QMessageBox.critical(self, "Save Failed", f"An error occurred while writing to the markdown file:\n{self.md_file_path}\n\nCheck console output for details.")
+        except Exception as e:
+             print(f"Error during save process: {e}")
+             QMessageBox.critical(self, "Save Error", f"An unexpected error occurred during the save process:\n{e}")
+
+    # --- End Save Logic ---
+
 class ImageProcessorUI(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.process = None
+        self.image_folder_path = None
+        self.text_folder_path = None # Added to store optional text folder path
+        self.text_output_dir = DEFAULT_TEXT_OUTPUT_DIR # Store default or selected dir
+        self.fields_output_dir = DEFAULT_FIELDS_OUTPUT_DIR # Store default or selected dir
+        self.text_process = QProcess(self)
+        self.field_process = QProcess(self)
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
-        self.text_output_dir = os.path.join(self.script_dir, DEFAULT_TEXT_OUTPUT_DIR)
-        self.fields_output_dir = os.path.join(self.script_dir, DEFAULT_FIELDS_OUTPUT_DIR)
         self.criteria_file_path = os.path.join(self.script_dir, "disease_keywords", "tuberculosis.md") # Path to criteria
         self.current_process_type = None # Track which process is running ('text' or 'fields')
         self.current_total_files = 0
@@ -403,12 +570,27 @@ class ImageProcessorUI(QMainWindow):
         
         layout.addLayout(fields_layout)
         
-        # Add Quit button
-        quit_btn = QPushButton('Quit')
+        layout.addStretch(1) # Add stretch before bottom buttons
+
+        # --- Bottom Buttons Layout ---
+        bottom_button_layout = QHBoxLayout()
+        bottom_button_layout.addStretch() # Push buttons to the right
+
+        self.export_button = QPushButton("Export Results to Excel") # Export button
+        self.export_button.clicked.connect(self.export_results_to_excel)
+        self.export_button.setEnabled(False) # Disabled initially
+        self.export_button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed) # Prevent stretching
+        bottom_button_layout.addWidget(self.export_button)
+
+        quit_btn = QPushButton('Quit') # Quit button
         quit_btn.clicked.connect(self.quit_application)
         quit_btn.setStyleSheet('background-color: #ff6b6b;')
-        layout.addWidget(quit_btn)
-        
+        quit_btn.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed) # Prevent stretching
+        bottom_button_layout.addWidget(quit_btn)
+
+        layout.addLayout(bottom_button_layout) # Add the horizontal layout to the main vertical layout
+        # --- End Bottom Buttons ---
+
         self.selected_image_folder = None
         self.selected_text_folder = self.text_output_dir # Default
         self.update_field_extraction_button_state() # Initial check
@@ -423,9 +605,10 @@ class ImageProcessorUI(QMainWindow):
     def quit_application(self):
         """Cleanly quit the application"""
         print("Quitting application...")
-        if self.process is not None:
-            self.process.kill()
-            self.process = None
+        if self.text_process.state() == QProcess.Running:
+            self.text_process.kill()
+        if self.field_process.state() == QProcess.Running:
+            self.field_process.kill()
         # Process any pending events
         QApplication.processEvents()
         # Clean up and quit
@@ -464,7 +647,7 @@ class ImageProcessorUI(QMainWindow):
         event.accept()
         
     def run_text_extraction(self):
-        if not self.selected_image_folder or self.process is not None:
+        if not self.selected_image_folder or self.text_process.state() != QProcess.NotRunning:
             return
         self.current_process_type = 'text' # Set current process type
         
@@ -492,17 +675,16 @@ class ImageProcessorUI(QMainWindow):
             self.extract_fields_btn.setEnabled(False)
             
             # Step 1: Extract text
-            self.process = QProcess()
-            self.process.setWorkingDirectory(self.script_dir)
+            self.text_process.setWorkingDirectory(self.script_dir)
             
             # Connect signals
-            self.process.readyReadStandardOutput.connect(self.handle_stdout)
-            self.process.readyReadStandardError.connect(self.handle_stderr)
-            self.process.finished.connect(self.text_extraction_finished)
+            self.text_process.readyReadStandardOutput.connect(self.handle_stdout)
+            self.text_process.readyReadStandardError.connect(self.handle_stderr)
+            self.text_process.finished.connect(self.text_extraction_finished)
             
             # Start text extraction
             extract_text_script = os.path.join(self.script_dir, EXTRACT_TEXT_SCRIPT)
-            self.process.start(venv_python, [
+            self.text_process.start(venv_python, [
                 extract_text_script,
                 self.selected_image_folder,
                 '--output-dir', self.text_output_dir
@@ -522,11 +704,11 @@ class ImageProcessorUI(QMainWindow):
             self.status_label_text.setText('Text extraction complete. Ready for Step 2.')
             
         self.progress_bar_text.setVisible(False)
-        self.process = None
+        self.text_process.terminate()
         self.current_process_type = None # Reset process type
         
     def run_field_extraction(self):
-        if self.process:
+        if self.field_process.state() != QProcess.NotRunning:
             return
         
         print("Starting field extraction process...")
@@ -539,10 +721,9 @@ class ImageProcessorUI(QMainWindow):
         self.extract_text_btn.setEnabled(False) # Disable text extraction button too
         
         # Set up the process
-        self.process = QProcess()
-        self.process.setProcessChannelMode(QProcess.MergedChannels) # Merge stdout/stderr for simplicity
-        self.process.readyReadStandardOutput.connect(self.handle_stdout)
-        self.process.finished.connect(self.field_extraction_finished)
+        self.field_process.setProcessChannelMode(QProcess.MergedChannels) # Merge stdout/stderr for simplicity
+        self.field_process.readyReadStandardOutput.connect(self.handle_stdout)
+        self.field_process.finished.connect(self.field_extraction_finished)
         
         # Determine the python executable path
         python_executable = sys.executable
@@ -555,8 +736,8 @@ class ImageProcessorUI(QMainWindow):
         print(f"Executing command: {' '.join(command)}")
 
         # Start the process
-        self.process.start(command[0], command[1:])
-        if not self.process.waitForStarted(5000): # Wait 5 seconds for start
+        self.field_process.start(command[0], command[1:])
+        if not self.field_process.waitForStarted(5000): # Wait 5 seconds for start
              error_msg = "Field extraction process failed to start."
              print(f"Error: {error_msg}")
              self.handle_error(error_msg)
@@ -568,18 +749,34 @@ class ImageProcessorUI(QMainWindow):
 
         if exit_code == 0:
             self.status_label_fields.setText('Processing complete! Results saved in extracted_fields directory')
+            # Enable export button if ANY .json files exist in the output directory
+            json_files = []
+            try:
+                json_files = glob.glob(os.path.join(self.fields_output_dir, '*.json'))
+            except Exception as e:
+                print(f"Error during glob search for json files: {e}")
+                # Keep export disabled if glob fails
+
+            if json_files:
+                print(f"Found {len(json_files)} JSON file(s) in {self.fields_output_dir}. Enabling export button.")
+                self.export_button.setEnabled(True)
+            else:
+                print(f"Warning: Field extraction complete, but no .json files found in {self.fields_output_dir}. Export button remains disabled.")
+                self.status_label_fields.setText('Processing complete! (No *.json files found)')
+                self.export_button.setEnabled(False)
         else:
             self.handle_error(f'Field extraction failed with exit code {exit_code}')
-            
+            self.export_button.setEnabled(False) # Ensure disabled on error too
+
         self.copy_error_btn_fields.setVisible(exit_code != 0)
         self.progress_bar_fields.setVisible(False)
-        self.process = None
+        self.field_process.terminate()
         self.current_process_type = None # Reset process type
         
     def handle_stdout(self):
-        if self.process is None:
+        if self.field_process.state() == QProcess.NotRunning:
             return
-        output = self.process.readAllStandardOutput().data().decode().strip()
+        output = self.field_process.readAllStandardOutput().data().decode().strip()
         
         # Store the last non-progress message
         last_status_message = ""
@@ -618,9 +815,9 @@ class ImageProcessorUI(QMainWindow):
                         self.status_label_fields.setText(last_status_message)
                 
     def handle_stderr(self):
-        if self.process is None:
+        if self.field_process.state() == QProcess.NotRunning:
             return
-        error = self.process.readAllStandardError().data().decode().strip()
+        error = self.field_process.readAllStandardError().data().decode().strip()
         if error:
             self.handle_error(f'Error during processing: {error}')
             
@@ -639,16 +836,17 @@ class ImageProcessorUI(QMainWindow):
 
         self.extract_text_btn.setEnabled(True)
         self.update_field_extraction_button_state()
-        if self.process is not None:
-            self.process.kill()
-        self.process = None
+        if self.field_process.state() == QProcess.Running:
+            self.field_process.kill()
+        self.field_process.terminate()
+        self.export_button.setEnabled(False) # Also disable export on other errors
 
     # --- New method to open the criteria editor --- 
     def open_criteria_editor(self):
         print(f"Loading criteria from: {self.criteria_file_path}")
         criteria_data = load_criteria_from_md(self.criteria_file_path)
         if criteria_data:
-            dialog = CriteriaEditorDialog(criteria_data, self) # Pass data and parent
+            dialog = CriteriaEditorDialog(criteria_data, self.criteria_file_path, self) # Pass data, path, and parent
             dialog.setWindowState(Qt.WindowFullScreen) # Set to fullscreen
             dialog.exec() # Show as modal dialog
         else:
@@ -661,35 +859,190 @@ class ImageProcessorUI(QMainWindow):
             error_dialog.exec()
             print("Failed to load criteria data for editor.")
 
+    # +++ New Methods for Export +++
+    def export_results_to_excel(self):
+        """Handles the 'Export Results' button click. Reads all *.json files in the output dir."""
+        # Scan for all .json files in the designated output directory
+        try:
+            json_files = glob.glob(os.path.join(self.fields_output_dir, '*.json'))
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Error scanning for JSON files:\n{e}")
+            return
+
+        if not json_files:
+            QMessageBox.warning(self, "Export Error",
+                                f"No .json result files found in directory:\\n{self.fields_output_dir}\\n\\nRun 'Extract Fields' first and ensure it produces output.")
+            return
+
+        all_data = []
+        errors = []
+        print(f"Found {len(json_files)} files to aggregate for export.")
+
+        for file_path in json_files:
+            file_name = os.path.basename(file_path)
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    # Assuming each JSON file contains a single dictionary object
+                    json_data = json.load(f)
+                    if isinstance(json_data, dict):
+                        all_data.append(json_data)
+                    else:
+                         print(f"Warning: Skipping file {file_name} - content is not a dictionary.")
+                         errors.append(f"Skipped {file_name}: Content not a dictionary")
+
+            except json.JSONDecodeError:
+                 print(f"Error: Failed to decode JSON from {file_name}")
+                 errors.append(f"Decode Error: {file_name}")
+            except Exception as e:
+                 print(f"Error reading file {file_name}: {e}")
+                 errors.append(f"Read Error: {file_name} - {e}")
+
+        if not all_data:
+            error_message = "No valid data could be loaded from the JSON files found."
+            if errors:
+                # Corrected error message formatting
+                error_message += "\n\nErrors encountered:\n- " + "\n- ".join(errors)
+            QMessageBox.critical(self, "Export Error", error_message)
+            return
+
+        if errors:
+             # Corrected error message formatting
+            QMessageBox.warning(self, "Export Warning",
+                              f"Exporting {len(all_data)} records, but some errors occurred during reading:\n\n- " +
+                              "\n- ".join(errors))
+
+        # Propose a default filename (keep Excel as default)
+        default_filename = os.path.join(os.getcwd(), "aggregated_fields_output.xlsx") # Updated default name
+
+        # Open 'Save As' dialog with options for Excel and CSV
+        options = QFileDialog.Options()
+        # options |= QFileDialog.DontUseNativeDialog
+        fileName, selected_filter = QFileDialog.getSaveFileName(self, "Save Aggregated Fields As", default_filename, # Updated title
+                                                  "Excel Files (*.xlsx);;CSV Files (*.csv);;All Files (*)", options=options)
+
+        if fileName:
+            # Ensure filename has the correct extension based on the filter
+            if selected_filter == "Excel Files (*.xlsx)" and not fileName.lower().endswith('.xlsx'):
+                 fileName += '.xlsx'
+            elif selected_filter == "CSV Files (*.csv)" and not fileName.lower().endswith('.csv'):
+                 fileName += '.csv'
+            elif '.' not in os.path.basename(fileName):
+                 if selected_filter == "CSV Files (*.csv)":
+                     fileName += '.csv'
+                 else:
+                     fileName += '.xlsx'
+
+            # Call the actual export function with the aggregated data
+            success = self._export_data_to_file(all_data, fileName)
+
+            if success:
+                QMessageBox.information(self, "Export Successful", f"Aggregated data successfully exported to:\\n{fileName}")
+            # Error message is handled within _export_data_to_file
+
+    def _export_data_to_file(self, data, output_filename):
+        """Internal function to handle the pandas export logic for Excel or CSV."""
+        try:
+            # Create a pandas DataFrame
+            if isinstance(data, dict):
+                # If it's a dict, try to find a list within it or wrap it
+                # Common patterns: results might be under a key like 'results' or 'data'
+                potential_keys = ['results', 'data', 'extracted_fields']
+                processed_data = None
+                for key in potential_keys:
+                    if key in data and isinstance(data[key], list):
+                        processed_data = data[key]
+                        print(f"Using data under key: '{key}'")
+                        break
+
+                if processed_data is None:
+                     print("Warning: Input JSON is a dictionary, not a list. Exporting as single row.")
+                     df = pd.DataFrame([data])
+                elif not processed_data:
+                     print("Warning: Found data list but it is empty. Creating an empty output file.")
+                     df = pd.DataFrame()
+                elif all(isinstance(item, dict) for item in processed_data):
+                    df = pd.DataFrame(processed_data)
+                else:
+                     print("Warning: Data list contains non-dictionary items. Attempting direct conversion.")
+                     df = pd.DataFrame(processed_data)
+
+            elif isinstance(data, list):
+                 if not data:
+                     print("Warning: Input JSON data is an empty list. Creating an empty output file.")
+                     df = pd.DataFrame()
+                 elif all(isinstance(item, dict) for item in data):
+                     df = pd.DataFrame(data)
+                 else:
+                     print("Warning: Input list contains non-dictionary items. Attempting conversion.")
+                     df = pd.DataFrame(data)
+            else:
+                 msg = f"Input data type '{type(data).__name__}' not supported for direct export. Expected list or dict."
+                 print(f"Error: {msg}")
+                 QMessageBox.critical(self, "Export Error", msg)
+                 return False
+
+            # Export the DataFrame based on file extension
+            file_ext = os.path.splitext(output_filename)[1].lower()
+
+            if file_ext == '.xlsx':
+                df.to_excel(output_filename, index=False, engine='openpyxl')
+                print(f"Data successfully exported to Excel: {output_filename}")
+            elif file_ext == '.csv':
+                df.to_csv(output_filename, index=False, encoding='utf-8') # Use utf-8 for CSV
+                print(f"Data successfully exported to CSV: {output_filename}")
+            else:
+                # Should not happen if file dialog logic is correct, but handle anyway
+                 msg = f"Unsupported file extension: {file_ext}. Please use .xlsx or .csv."
+                 print(f"Error: {msg}")
+                 QMessageBox.critical(self, "Export Error", msg)
+                 return False
+
+            return True
+
+        except ImportError:
+            # ... (same error handling as before for pandas/openpyxl)
+            msg = "The 'pandas' and 'openpyxl' libraries are required for Excel/CSV export.\\nPlease install them (e.g., conda install pandas openpyxl)" # Updated message
+            print(f"Error: {msg}")
+            QMessageBox.critical(self, "Export Error", msg)
+            return False
+        except Exception as e:
+            # ... (same generic error handling)
+            msg = f"An error occurred during export: {e}"
+            print(f"Error: {msg}")
+            QMessageBox.critical(self, "Export Error", msg)
+            return False
+    # --- End Methods ---
+
 def main():
     # Try to acquire the lock
     lock_fd = acquire_lock()
-    if not lock_fd:
-        print("Another instance is already running or didn't clean up properly.")
-        print("Cleaning up old lock file...")
-        try:
-            os.unlink(LOCK_FILE)
-            lock_fd = acquire_lock()
-            if not lock_fd:
-                print("Still cannot acquire lock. Please try again.")
-                sys.exit(1)
-        except (IOError, OSError):
-            print("Failed to clean up lock file. Please try again.")
-            sys.exit(1)
+    if lock_fd is None:
+        print("Another instance of the application is already running.")
+        # Optionally show a message box to the user
+        # app = QApplication.instance() # Check if an app instance exists
+        # if not app: # Create one if needed for the message box
+        #    app = QApplication(sys.argv)
+        # QMessageBox.warning(None, "Application Running", "Another instance of the Image Text Extractor is already running.")
+        sys.exit(1) # Exit if lock not acquired
 
+    # Ensure cleanup releases the lock even if app creation fails
     try:
-        # Launch GUI
         app = QApplication(sys.argv)
-        ex = ImageProcessorUI()
-        ex.show()
-        return_code = app.exec()
-        cleanup()
-        sys.exit(return_code)
+        # Set stylesheet (optional, for better look and feel)
+        # app.setStyleSheet("""
+        # QPushButton { padding: 5px; }
+        # QLabel { margin: 2px; }
+        # QProgressBar { text-align: center; }
+        # """)
+        mainWin = ImageProcessorUI()
+        mainWin.show()
+        exit_code = app.exec()
+
     finally:
-        # The atexit handler takes care of releasing the lock on normal exit
-        # We no longer need to explicitly call release_lock here.
-        # release_lock(lock_fd)
-        pass
+        # Explicitly release lock here, though atexit should also cover it
+        release_lock(lock_fd)
+
+    sys.exit(exit_code)
 
 if __name__ == '__main__':
     main() 

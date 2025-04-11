@@ -62,9 +62,9 @@ skin_test_keywords = {
     "Documentation": [
         "tuberculin test result <95%>",
         "tst result <95%>",
-        "induration measured <95%>",
+        "induration <95%>",
         "skin test reading <90%>",
-        "induration diameter <95%>",
+        "induration <95%>",
         "skin reaction measurement <90%>",
         "millimeters induration <95%>",
         "mm induration <90%>",
@@ -83,8 +83,8 @@ skin_test_patterns = {
     # Test name patterns
     "Test": [
         r"\btuberculin\s+skin\s+test\b <95%>",
-        r"\btst\b(?!.*\bdid\s+not\b) <90%>",  # TST but not "did not TST"
-        r"\bppd\b(?!\s+test\s+not\s+performed) <90%>",  # PPD but not when not performed
+        r"\btst\b(?!.*\bdid\s+not\b) <90%>",
+        r"\bppd\b(?!\s+test\s+not\s+performed) <90%>",
         r"\bmantoux\b(?:\s+test)? <95%>",
         r"\btb\s+skin\s+test\b <95%>",
         r"\btuberculin\s+test\b <90%>",
