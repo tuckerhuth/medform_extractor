@@ -26,4 +26,7 @@ Thumbs.db
 
 # IDE / Editor folders
 .vscode/
-.idea/ 
+.idea/
+
+# Custom
+AAA_run_instructions 

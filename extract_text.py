@@ -6,14 +6,14 @@ import time
 import json
 from pathlib import Path
 from datetime import datetime
-import cv2 # Import OpenCV for saving the image
+# import cv2 # No longer needed here unless preprocessing is re-enabled
 
 from src.scanner import scan_directory
-from src.image_loader import load_image
-from src.preprocessing import preprocess_image
+# from src.image_loader import load_image # Only needed if preprocessing
+# from src.preprocessing import preprocess_image # Only needed if preprocessing
 from src.ocr import extract_text_from_image
 
-PREPROCESSED_OUTPUT_DIR = "preprocessed_images"
+PREPROCESSED_OUTPUT_DIR = "preprocessed_images" # Keep for now, might remove later
 
 def process_image_file(file_path, output_dir):
     """Extract text from a single image file and save to JSON."""
@@ -26,7 +26,7 @@ def process_image_file(file_path, output_dir):
         'extracted_text': None,
         'error': None,
         'image_last_modified': None,
-        'preprocessed_image_path': None,
+        'preprocessed_image_path': None, # Keep field, but won't be populated by Vision
         'extraction_timestamp': datetime.now().isoformat(),
         'processing_time': None
     }
@@ -36,10 +36,10 @@ def process_image_file(file_path, output_dir):
         result['image_last_modified'] = datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat()
 
         # Load and process image
-        image = load_image(file_path)
-        if image is None:
-            result['error'] = "Failed to load image"
-            return result
+        # image = load_image(file_path)
+        # if image is None:
+        #     result['error'] = "Failed to load image"
+        #     return result
 
         # --- Preprocessing Skipped --- 
         # processed_image = preprocess_image(image)
@@ -47,30 +47,34 @@ def process_image_file(file_path, output_dir):
         #     result['error'] = "Preprocessing failed"
         #     return result
         # Use the original loaded image instead
-        processed_image = image # Pass the original Pillow image object
+        # processed_image = image # Pass the original Pillow image object
         # --- End Skip --- 
 
-        # Save preprocessed image
-        try:
-            preprocessed_dir = Path(output_dir).parent / PREPROCESSED_OUTPUT_DIR
-            preprocessed_dir.mkdir(parents=True, exist_ok=True)
-            input_path = Path(file_path)
-            preprocessed_filename = input_path.stem + "_preprocessed.png"
-            preprocessed_save_path = preprocessed_dir / preprocessed_filename
-            
-            if cv2.imwrite(str(preprocessed_save_path), processed_image):
-                # Note: Saving the *original* image here if preprocessing is skipped
-                result['preprocessed_image_path'] = str(preprocessed_save_path)
-            else:
-                print(f"Warning: Failed to save preprocessed image for {file_path}")
-        except Exception as save_err:
-            print(f"Warning: Error saving preprocessed image for {file_path}: {save_err}")
+        # --- Save preprocessed image --- 
+        # try:
+        #     preprocessed_dir = Path(output_dir).parent / PREPROCESSED_OUTPUT_DIR
+        #     preprocessed_dir.mkdir(parents=True, exist_ok=True)
+        #     input_path = Path(file_path)
+        #     preprocessed_filename = input_path.stem + "_preprocessed.png"
+        #     preprocessed_save_path = preprocessed_dir / preprocessed_filename
+        #     
+        #     # Note: Saving the *original* image here if preprocessing is skipped
+        #     # This saving step needs re-evaluation if using Vision framework
+        #     # if cv2.imwrite(str(preprocessed_save_path), processed_image):
+        #     #     result['preprocessed_image_path'] = str(preprocessed_save_path)
+        #     # else:
+        #     #     print(f"Warning: Failed to save preprocessed image for {file_path}")
+        # except Exception as save_err:
+        #     print(f"Warning: Error saving preprocessed image for {file_path}: {save_err}")
+        # --- End save --- 
 
-        # Perform OCR
-        # Note: Passing the original Pillow image object to extract_text_from_image
-        extracted_text = extract_text_from_image(processed_image)
+        # Perform OCR using Vision framework (pass file path directly)
+        extracted_text = extract_text_from_image(str(file_path)) # Pass the path
+
         if extracted_text is None:
-            result['error'] = "OCR failed"
+            # If Vision failed, set an error. Empty string means no text found.
+            if result['error'] is None: # Don't overwrite previous errors
+                result['error'] = "OCR failed"
         else:
             result['extracted_text'] = extracted_text
 

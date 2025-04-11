@@ -81,12 +81,13 @@ class ImageProcessorUI(QMainWindow):
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self.text_output_dir = os.path.join(self.script_dir, DEFAULT_TEXT_OUTPUT_DIR)
         self.fields_output_dir = os.path.join(self.script_dir, DEFAULT_FIELDS_OUTPUT_DIR)
-        self.current_total_files = 0 # To store total files for progress display
+        self.current_process_type = None # Track which process is running ('text' or 'fields')
+        self.current_total_files = 0
         self.initUI()
         
     def initUI(self):
         self.setWindowTitle('Image Text Extractor')
-        self.setGeometry(300, 300, 550, 350)
+        self.setGeometry(300, 300, 550, 400) # Adjusted size slightly more
         
         # Create central widget and layout
         central_widget = QWidget()
@@ -120,11 +121,23 @@ class ImageProcessorUI(QMainWindow):
         text_button_layout.addWidget(self.extract_text_btn)
         
         text_layout.addLayout(text_button_layout)
-
-        # Progress Bar - Moved under Step 1
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        text_layout.addWidget(self.progress_bar) # Add to text_layout
+        
+        # Progress Bar - Step 1
+        self.progress_bar_text = QProgressBar() # Renamed
+        self.progress_bar_text.setVisible(False)
+        text_layout.addWidget(self.progress_bar_text)
+        
+        # Status Area - Step 1
+        status_layout_text = QHBoxLayout()
+        self.status_label_text = QLabel('Select an image folder to begin') # Renamed
+        self.status_label_text.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        status_layout_text.addWidget(self.status_label_text, 1)
+        self.copy_error_btn_text = QPushButton('Copy Error') # Renamed
+        self.copy_error_btn_text.clicked.connect(lambda: self.copy_to_clipboard(self.status_label_text.text()))
+        self.copy_error_btn_text.setVisible(False)
+        self.copy_error_btn_text.setFixedWidth(100)
+        status_layout_text.addWidget(self.copy_error_btn_text)
+        text_layout.addLayout(status_layout_text)
         
         layout.addLayout(text_layout)
         
@@ -150,28 +163,31 @@ class ImageProcessorUI(QMainWindow):
         # Extract Fields button
         self.extract_fields_btn = QPushButton('Extract Fields')
         self.extract_fields_btn.clicked.connect(self.run_field_extraction)
-        self.extract_fields_btn.setEnabled(False) # Enabled when text dir exists
-        self.extract_fields_btn.setStyleSheet('background-color: #2ecc71; color: white;') # Green button
+        self.extract_fields_btn.setEnabled(False)
+        self.extract_fields_btn.setStyleSheet('background-color: #2ecc71; color: white;')
         self.extract_fields_btn.setFixedWidth(120)
         fields_button_layout.addWidget(self.extract_fields_btn)
         
         fields_layout.addLayout(fields_button_layout)
+        
+        # Progress Bar - Step 2
+        self.progress_bar_fields = QProgressBar()
+        self.progress_bar_fields.setVisible(False)
+        fields_layout.addWidget(self.progress_bar_fields)
+        
+        # Status Area - Step 2
+        status_layout_fields = QHBoxLayout()
+        self.status_label_fields = QLabel('Run Step 1 or select a text folder')
+        self.status_label_fields.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        status_layout_fields.addWidget(self.status_label_fields, 1)
+        self.copy_error_btn_fields = QPushButton('Copy Error')
+        self.copy_error_btn_fields.clicked.connect(lambda: self.copy_to_clipboard(self.status_label_fields.text()))
+        self.copy_error_btn_fields.setVisible(False)
+        self.copy_error_btn_fields.setFixedWidth(100)
+        status_layout_fields.addWidget(self.copy_error_btn_fields)
+        fields_layout.addLayout(status_layout_fields)
+        
         layout.addLayout(fields_layout)
-
-        # Status Area (Label + Copy Button)
-        status_layout = QHBoxLayout()
-        
-        self.status_label = QLabel('Select a folder to begin')
-        self.status_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        status_layout.addWidget(self.status_label, 1)
-        
-        self.copy_error_btn = QPushButton('Copy Error')
-        self.copy_error_btn.clicked.connect(self.copy_error_to_clipboard)
-        self.copy_error_btn.setVisible(False)
-        self.copy_error_btn.setFixedWidth(100)
-        status_layout.addWidget(self.copy_error_btn)
-        
-        layout.addLayout(status_layout)
         
         # Add Quit button
         quit_btn = QPushButton('Quit')
@@ -188,7 +204,7 @@ class ImageProcessorUI(QMainWindow):
         can_extract = os.path.isdir(self.selected_text_folder)
         self.extract_fields_btn.setEnabled(can_extract)
         if not can_extract:
-            self.status_label.setText("Run Step 1 or select a valid text folder for Step 2.")
+            self.status_label_fields.setText("Run Step 1 or select a valid text folder for Step 2.")
         
     def quit_application(self):
         """Cleanly quit the application"""
@@ -208,8 +224,9 @@ class ImageProcessorUI(QMainWindow):
             self.selected_image_folder = folder
             self.image_folder_label.setText(f'Selected: {folder}')
             self.extract_text_btn.setEnabled(True)
-            self.status_label.setText('Ready to process')
-            self.copy_error_btn.setVisible(False)
+            self.status_label_text.setText('Ready to extract text')
+            self.copy_error_btn_text.setVisible(False)
+            self.copy_error_btn_fields.setVisible(False) # Hide other error button
             
     def select_text_folder(self):
         folder = QFileDialog.getExistingDirectory(self, 'Select Folder with Extracted Text JSONs', self.text_output_dir)
@@ -218,12 +235,13 @@ class ImageProcessorUI(QMainWindow):
             self.text_folder_label.setText(f'Using text files from: {os.path.basename(folder)}')
             self.update_field_extraction_button_state()
             if self.extract_fields_btn.isEnabled():
-                self.status_label.setText('Ready to extract fields')
-            self.copy_error_btn.setVisible(False)
+                self.status_label_fields.setText('Ready to extract fields')
+            self.copy_error_btn_fields.setVisible(False)
+            self.copy_error_btn_text.setVisible(False) # Hide other error button
             
-    def copy_error_to_clipboard(self):
+    def copy_to_clipboard(self, text):
         clipboard = QApplication.clipboard()
-        clipboard.setText(self.status_label.text())
+        clipboard.setText(text)
         
     def closeEvent(self, event):
         """Handle window close button click"""
@@ -234,7 +252,8 @@ class ImageProcessorUI(QMainWindow):
     def run_text_extraction(self):
         if not self.selected_image_folder or self.process is not None:
             return
-            
+        self.current_process_type = 'text' # Set current process type
+        
         # Get the Python executable from virtual environment
         venv_python = sys.executable
         os.makedirs(self.text_output_dir, exist_ok=True)
@@ -246,15 +265,15 @@ class ImageProcessorUI(QMainWindow):
             self.current_total_files = total_files # Store for status display
             
             if total_files == 0:
-                self.status_label.setText('No image files found in the selected folder or subfolders')
+                self.status_label_text.setText('No image files found in the selected folder or subfolders')
                 return
                 
-            self.progress_bar.setVisible(True)
-            self.progress_bar.setMaximum(total_files)
-            self.progress_bar.setValue(0)
+            self.progress_bar_text.setVisible(True)
+            self.progress_bar_text.setMaximum(total_files)
+            self.progress_bar_text.setValue(0)
             
-            self.status_label.setText('Extracting text from images...')
-            self.copy_error_btn.setVisible(False)
+            self.status_label_text.setText('Extracting text from images...')
+            self.copy_error_btn_text.setVisible(False)
             self.extract_text_btn.setEnabled(False)
             self.extract_fields_btn.setEnabled(False)
             
@@ -286,14 +305,16 @@ class ImageProcessorUI(QMainWindow):
         if exit_code != 0:
             self.handle_error(f'Text extraction failed with exit code {exit_code}')
         else:
-            self.status_label.setText('Text extraction complete. Ready for Step 2.')
+            self.status_label_text.setText('Text extraction complete. Ready for Step 2.')
             
-        self.progress_bar.setVisible(False)
+        self.progress_bar_text.setVisible(False)
         self.process = None
+        self.current_process_type = None # Reset process type
         
     def run_field_extraction(self):
         if not self.selected_text_folder or self.process is not None:
             return
+        self.current_process_type = 'fields' # Set current process type
          
         # Count total files
         try:
@@ -301,22 +322,22 @@ class ImageProcessorUI(QMainWindow):
             total_files = len(json_files)
             self.current_total_files = total_files # Store for status display
             if total_files == 0:
-                self.status_label.setText('No text JSON files found in the selected folder')
+                self.status_label_fields.setText('No text JSON files found in the selected folder')
                 return
         except FileNotFoundError:
-            self.status_label.setText(f'Error: Text folder not found: {self.selected_text_folder}')
+            self.status_label_fields.setText(f'Error: Text folder not found: {self.selected_text_folder}')
             return
 
         venv_python = sys.executable # Use the current executable
         os.makedirs(self.fields_output_dir, exist_ok=True)
 
-        self.progress_bar.setVisible(True)
-        self.progress_bar.setMaximum(total_files)
-        self.progress_bar.setValue(0)
+        self.progress_bar_fields.setVisible(True)
+        self.progress_bar_fields.setMaximum(total_files)
+        self.progress_bar_fields.setValue(0)
 
         # Start field extraction
-        self.status_label.setText('Extracting fields from text...')
-        self.copy_error_btn.setVisible(False)
+        self.status_label_fields.setText('Extracting fields from text...')
+        self.copy_error_btn_fields.setVisible(False)
         self.extract_text_btn.setEnabled(False)
         self.extract_fields_btn.setEnabled(False)
         
@@ -342,13 +363,14 @@ class ImageProcessorUI(QMainWindow):
         self.update_field_extraction_button_state()
 
         if exit_code == 0:
-            self.status_label.setText('Processing complete! Results saved in extracted_fields directory')
+            self.status_label_fields.setText('Processing complete! Results saved in extracted_fields directory')
         else:
             self.handle_error(f'Field extraction failed with exit code {exit_code}')
             
-        self.copy_error_btn.setVisible(exit_code != 0)
-        self.progress_bar.setVisible(False)
+        self.copy_error_btn_fields.setVisible(exit_code != 0)
+        self.progress_bar_fields.setVisible(False)
         self.process = None
+        self.current_process_type = None # Reset process type
         
     def handle_stdout(self):
         if self.process is None:
@@ -362,21 +384,34 @@ class ImageProcessorUI(QMainWindow):
             if line.startswith('PROGRESS:'):
                 try:
                     current = int(line.split(':')[1])
-                    self.progress_bar.setValue(current)
-                    # Update status label with combined progress and last status
-                    progress_text = f"Processing file {current}/{self.current_total_files}"
-                    self.status_label.setText(f"{progress_text}: {last_status_message}")
+                    if self.current_process_type == 'text':
+                        self.progress_bar_text.setValue(current)
+                        self.status_label_text.setText(f"{current}/{self.current_total_files}")
+                    elif self.current_process_type == 'fields':
+                        self.progress_bar_fields.setValue(current)
+                        self.status_label_fields.setText(f"{current}/{self.current_total_files}")
                 except (IndexError, ValueError):
-                    self.status_label.setText("Error parsing progress update.")
+                    if self.current_process_type == 'text':
+                        self.status_label_text.setText("Error parsing progress update.")
+                    elif self.current_process_type == 'fields':
+                        self.status_label_fields.setText("Error parsing progress update.")
             elif line:
                 last_status_message = line # Store the latest status
                 # Update status label, potentially combining with current progress if available
-                if self.progress_bar.isVisible():
-                    current = self.progress_bar.value()
+                if self.current_process_type == 'text' and self.progress_bar_text.isVisible():
+                    current = self.progress_bar_text.value()
                     progress_text = f"Processing file {current}/{self.current_total_files}"
-                    self.status_label.setText(f"{progress_text}: {last_status_message}")
+                    self.status_label_text.setText(f"{progress_text}: {last_status_message}")
+                elif self.current_process_type == 'fields' and self.progress_bar_fields.isVisible():
+                    current = self.progress_bar_fields.value()
+                    progress_text = f"Processing file {current}/{self.current_total_files}"
+                    self.status_label_fields.setText(f"{progress_text}: {last_status_message}")
                 else:
-                    self.status_label.setText(last_status_message)
+                    # If progress bar isn't visible, just show the message in the appropriate label
+                    if self.current_process_type == 'text':
+                        self.status_label_text.setText(last_status_message)
+                    elif self.current_process_type == 'fields':
+                        self.status_label_fields.setText(last_status_message)
                 
     def handle_stderr(self):
         if self.process is None:
@@ -386,14 +421,23 @@ class ImageProcessorUI(QMainWindow):
             self.handle_error(f'Error during processing: {error}')
             
     def handle_error(self, error_msg):
-        self.status_label.setText(error_msg)
-        self.copy_error_btn.setVisible(True)
+        if self.current_process_type == 'text':
+            self.status_label_text.setText(error_msg)
+            self.copy_error_btn_text.setVisible(True)
+            self.progress_bar_text.setVisible(False)
+        elif self.current_process_type == 'fields':
+            self.status_label_fields.setText(error_msg)
+            self.copy_error_btn_fields.setVisible(True)
+            self.progress_bar_fields.setVisible(False)
+        else: # Error occurred before process type was set
+            self.status_label_text.setText(error_msg)
+            self.copy_error_btn_text.setVisible(True)
+
         self.extract_text_btn.setEnabled(True)
         self.update_field_extraction_button_state()
-        self.progress_bar.setVisible(False)
         if self.process is not None:
             self.process.kill()
-            self.process = None
+        self.process = None
 
 def main():
     # Try to acquire the lock
