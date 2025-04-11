@@ -42,7 +42,7 @@ signal.signal(signal.SIGTERM, signal_handler)
 # --- Configuration ---
 VENV_DIR = ".venv"
 EXTRACT_TEXT_SCRIPT = "extract_text.py"
-EXTRACT_FIELDS_SCRIPT = "extract_fields.py"
+PROCESS_OCR_SCRIPT = "process_ocr.py"
 DEFAULT_TEXT_OUTPUT_DIR = "extracted_text"
 DEFAULT_FIELDS_OUTPUT_DIR = "extracted_fields"
 LOCK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), '.qt_lock')
@@ -312,53 +312,43 @@ class ImageProcessorUI(QMainWindow):
         self.current_process_type = None # Reset process type
         
     def run_field_extraction(self):
-        if not self.selected_text_folder or self.process is not None:
+        if self.process:
             return
-        self.current_process_type = 'fields' # Set current process type
-         
-        # Count total files
-        try:
-            json_files = [f for f in os.listdir(self.selected_text_folder) if f.endswith('.json')]
-            total_files = len(json_files)
-            self.current_total_files = total_files # Store for status display
-            if total_files == 0:
-                self.status_label_fields.setText('No text JSON files found in the selected folder')
-                return
-        except FileNotFoundError:
-            self.status_label_fields.setText(f'Error: Text folder not found: {self.selected_text_folder}')
-            return
-
-        venv_python = sys.executable # Use the current executable
-        os.makedirs(self.fields_output_dir, exist_ok=True)
-
+        
+        print("Starting field extraction process...")
+        self.current_process_type = 'fields'
         self.progress_bar_fields.setVisible(True)
-        self.progress_bar_fields.setMaximum(total_files)
         self.progress_bar_fields.setValue(0)
-
-        # Start field extraction
-        self.status_label_fields.setText('Extracting fields from text...')
+        self.status_label_fields.setText('Processing... Finding text files...')
         self.copy_error_btn_fields.setVisible(False)
-        self.extract_text_btn.setEnabled(False)
         self.extract_fields_btn.setEnabled(False)
+        self.extract_text_btn.setEnabled(False) # Disable text extraction button too
         
+        # Set up the process
         self.process = QProcess()
-        self.process.setWorkingDirectory(self.script_dir)
-        
-        # Connect signals
+        self.process.setProcessChannelMode(QProcess.MergedChannels) # Merge stdout/stderr for simplicity
         self.process.readyReadStandardOutput.connect(self.handle_stdout)
-        self.process.readyReadStandardError.connect(self.handle_stderr)
         self.process.finished.connect(self.field_extraction_finished)
         
-        # Start field extraction
-        extract_fields_script = os.path.join(self.script_dir, EXTRACT_FIELDS_SCRIPT)
-        self.process.start(venv_python, [
-            extract_fields_script,
-            self.selected_text_folder,
-            '--output-dir', self.fields_output_dir
-        ])
-        
+        # Determine the python executable path
+        python_executable = sys.executable
+        print(f"Using Python executable: {python_executable}")
+
+        # Construct the command for process_ocr.py
+        # It reads from INPUT_DIR ("extracted_text") and writes to OUTPUT_DIR ("extracted_fields") by default
+        # It doesn't require input/output directory arguments like the old script
+        command = [python_executable, os.path.join(self.script_dir, PROCESS_OCR_SCRIPT)]
+        print(f"Executing command: {' '.join(command)}")
+
+        # Start the process
+        self.process.start(command[0], command[1:])
+        if not self.process.waitForStarted(5000): # Wait 5 seconds for start
+             error_msg = "Field extraction process failed to start."
+             print(f"Error: {error_msg}")
+             self.handle_error(error_msg)
+
     def field_extraction_finished(self, exit_code, exit_status):
-        """Handle completion of field extraction step."""
+        """Handle completion of the field extraction process."""
         self.extract_text_btn.setEnabled(True)
         self.update_field_extraction_button_state()
 
