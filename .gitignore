@@ -1,0 +1,29 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment 
+# Although we use conda, good to keep generic venv exclusion
+.venv/
+
+# Conda environment files (if exported)
+# environment.yml
+
+# Output directories
+extracted_text/
+extracted_fields/
+preprocessed_images/
+output/
+
+# Lock files
+.qt_lock
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# IDE / Editor folders
+.vscode/
+.idea/ 
