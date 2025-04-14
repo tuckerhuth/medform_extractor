@@ -1,8 +1,97 @@
 # Python cache
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+# *.manifest
+# *.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+osx_coverage.prof
+.pytest_cache/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IDE folders
+.idea/
+.vscode/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Application specific
+*.log
+ImageExtractorOutput/
+# Keep the disease_keywords subdirectory in git, but ignore its contents initially?
+# Or explicitly track the default yaml? For now, ignore the output dir.
+# /ImageExtractorOutput/disease_keywords/*
+# !/ImageExtractorOutput/disease_keywords/tuberculosis.yaml
+
+# Lock file
+.qt_lock
 
 # Virtual environment 
 # Although we use conda, good to keep generic venv exclusion
@@ -15,18 +104,4 @@ __pycache__/
 extracted_text/
 extracted_fields/
 preprocessed_images/
-output/
-
-# Lock files
-.qt_lock
-
-# OS-specific files
-.DS_Store
-Thumbs.db
-
-# IDE / Editor folders
-.vscode/
-.idea/
-
-# Custom
-AAA_run_instructions 
+output/ 

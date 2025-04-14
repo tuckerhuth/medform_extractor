@@ -6,136 +6,146 @@ import sys
 import glob
 from collections import defaultdict
 import traceback # For detailed error logging
+from typing import Dict, List, Any, Union
+from pathlib import Path
+import yaml # Add YAML import
 
 # --- Constants ---
-# Construct path relative to this script's location
-DEFAULT_CRITERIA_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'disease_keywords', 'tuberculosis.md'))
 
-# --- Markdown Parsing Logic ---
-
-def parse_confidence(item_str):
-    """Extracts keyword/pattern and confidence level. Returns (item, confidence)."""
-    # Regex: optional quotes/space, capture item (non-greedy), optional space, <digits%>, optional space
-    match = re.match(r'^['"\s]*(.*?)['"\s]*<(\d+)%>', item_str.strip()) # Removed trailing $ for flexibility, fixed % escape
-    if match:
-        return match.group(1).strip(), int(match.group(2)) / 100.0
-    else:
-        # Default confidence 100% if pattern <...%> is not found
-        return item_str.strip(''" '), 1.0
-
-def parse_md_section(md_content, variable_name):
-    """
-    Parses a Python dictionary definition (like keyword lists) from a markdown code block.
-    Returns a dictionary structured like:
-    { "Category": [(item1, conf1), (item2, conf2), ...], ... }
-    """
-    data_dict = defaultdict(list)
-    # Regex: variable_name = { content }
-    pattern_str = r'^\s*' + re.escape(variable_name) + r'\s*=\s*{(.*?)^\s*}'
-    pattern = re.compile(pattern_str, re.DOTALL | re.MULTILINE)
-    match = pattern.search(md_content)
-
-    if not match:
-        print(f"Warning: Could not find definition block for '{variable_name}' in markdown.")
-        return dict(data_dict)
-
-    dict_content = match.group(1).strip()
-    # Regex: "Category Name": [ list_content ]
-    category_pattern = re.compile(r'^\s*['"]([\w\s]+)['"]\s*:\s*\[(.*?)\]', re.DOTALL | re.MULTILINE)
-
-    for cat_match in category_pattern.finditer(dict_content):
-        category = cat_match.group(1).strip()
-        items_str = cat_match.group(2).strip()
-        # Split items by comma, ONLY if the comma is followed by optional whitespace and then a quote
-        raw_items = re.split(r',(?=\s*['"])', items_str)
-        for item_raw in raw_items:
-            item_clean = item_raw.strip()
-            if item_clean:
-                item, confidence = parse_confidence(item_clean)
-                if item and item != '''' and item != '""':
-                    data_dict[category].append((item, confidence))
-    return dict(data_dict)
-
-def load_criteria_from_md(md_file_path):
-    """Loads all criteria (keywords and patterns) from the markdown file."""
-    criteria = {
-        "Skin Test": {"Keywords": {}, "Patterns": {}},
-        "Blood Test": {"Keywords": {}, "Patterns": {}},
-        "X-Ray": {"Keywords": {}, "Patterns": {}}
-    }
+def get_resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
     try:
-        with open(md_file_path, 'r', encoding='utf-8') as f:
-            md_content = f.read()
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+        # print(f"DEBUG: Running from PyInstaller bundle, _MEIPASS={base_path}")
+    except Exception:
+        # Not running in a bundle, use relative path from script
+        # Go up one level from src to the project root
+        base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        # print(f"DEBUG: Running from script, base_path={base_path}")
 
-        sections = {
-            "Skin Test": {"Keywords": "skin_test_keywords", "Patterns": "skin_test_patterns"},
-            "Blood Test": {"Keywords": "blood_test_keywords", "Patterns": "blood_test_patterns"},
-            "X-Ray": {"Keywords": "xray_keywords", "Patterns": "xray_patterns"}
-        }
+    resource_path = os.path.join(base_path, relative_path)
+    # print(f"DEBUG: Resource path for '{relative_path}' resolved to '{resource_path}'")
+    return resource_path
 
-        for test_type, vars in sections.items():
-            for criteria_type, var_name in vars.items():
-                 criteria[test_type][criteria_type] = parse_md_section(md_content, var_name)
+# Use the helper function to define the path
+# DEFAULT_CRITERIA_FILE = get_resource_path(os.path.join('disease_keywords', 'tuberculosis.yaml'))
+# We will now get the criteria file path from the command-line argument
 
+# --- YAML Loading Logic --- 
+
+def load_criteria_from_yaml(yaml_file_path):
+    """Loads criteria from the specified YAML file."""
+    try:
+        with open(yaml_file_path, 'r', encoding='utf-8') as f:
+            criteria = yaml.safe_load(f)
+        if not isinstance(criteria, dict): # Basic validation
+             print(f"ERROR: YAML file {yaml_file_path} did not load as a dictionary.", file=sys.stderr)
+             return None
+        # Add more specific validation if the expected structure is known
+        # Example: Check for top-level keys like 'Skin Test', 'Blood Test', 'X-Ray'
+        # expected_keys = ["Skin Test", "Blood Test", "X-Ray"]
+        # if not all(key in criteria for key in expected_keys):
+        #     print(f"ERROR: YAML file {yaml_file_path} is missing expected top-level keys.", file=sys.stderr)
+        #     return None
+        return criteria
     except FileNotFoundError:
-        print(f"ERROR: Criteria file not found at {md_file_path}", file=sys.stderr)
+        print(f"ERROR: Criteria YAML file not found at {yaml_file_path}", file=sys.stderr)
+        return None
+    except yaml.YAMLError as e:
+        print(f"ERROR parsing criteria YAML file {yaml_file_path}: {e}", file=sys.stderr)
+        print(traceback.format_exc(), file=sys.stderr)
         return None
     except Exception as e:
-        print(f"ERROR parsing criteria file {md_file_path}: {e}", file=sys.stderr)
-        print(traceback.format_exc(), file=sys.stderr) # Print detailed traceback for parsing errors
+        print(f"ERROR loading criteria YAML file {yaml_file_path}: {e}", file=sys.stderr)
+        print(traceback.format_exc(), file=sys.stderr)
         return None
 
-    return criteria
-
-# --- Matching Logic ---
+# --- Matching Logic (should work with dict loaded from YAML) ---
 
 def find_matches(text, criteria):
     """
     Finds keyword and pattern matches in the text based on the loaded criteria.
     Returns structured dictionary of matches.
+    (Assumes criteria is a dictionary structured appropriately, e.g., loaded from YAML)
     """
     matches = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
-    if not text or not criteria:
+    if not text or not criteria or not isinstance(criteria, dict):
         return {}
 
     text_lower = text.lower()
 
-    for test_type, test_criteria in criteria.items():
-        # Match Keywords (case-insensitive)
-        for category, items in test_criteria.get("Keywords", {}).items():
-            for keyword, confidence in items:
-                keyword_pattern = r"(?<!\w)" + re.escape(keyword.lower()) + r"(?!\w)"
-                try:
-                    for match in re.finditer(keyword_pattern, text_lower):
-                        matches[test_type][category]["Keyword"].append({
-                            "term": keyword,
-                            "match": match.group(0),
-                            "confidence": confidence,
-                            "start": match.start(),
-                            "end": match.end()
-                        })
-                except re.error as e:
-                    print(f"WARNING: Regex error compiling/matching keyword '{keyword}': {e}")
+    # Example structure expected from YAML:
+    # criteria = {
+    #   'TestType1': {
+    #     'Category1': {
+    #       'Keywords': [{'term': 'kw1', 'confidence': 0.9}, ...],
+    #       'Patterns': [{'pattern': 'regex1', 'confidence': 0.8}, ...]
+    #     }, ...
+    #   }, ...
+    # }
 
-        # Match Patterns (case-insensitive, applied to original text)
-        for category, items in test_criteria.get("Patterns", {}).items():
-            for pattern_str, confidence in items:
-                try:
-                    pattern = re.compile(pattern_str, re.IGNORECASE)
-                    for match in pattern.finditer(text):
-                        matches[test_type][category]["Pattern"].append({
-                            "pattern": pattern_str,
-                            "match": match.group(0),
-                            "confidence": confidence,
-                            "start": match.start(),
-                            "end": match.end()
-                        })
-                except re.error as e:
-                    print(f"WARNING: Regex error compiling/matching pattern '{pattern_str}': {e}")
-                except Exception as e:
-                     print(f"WARNING: Unexpected error matching pattern '{pattern_str}': {e}")
+    for test_type, test_categories in criteria.items():
+        if not isinstance(test_categories, dict):
+            print(f"WARNING: Skipping test type '{test_type}' as its value is not a dictionary.", file=sys.stderr)
+            continue
+            
+        for category, match_types in test_categories.items():
+            if not isinstance(match_types, dict):
+                print(f"WARNING: Skipping category '{category}' under '{test_type}' as its value is not a dictionary.", file=sys.stderr)
+                continue
 
-    # Convert defaultdicts back to regular dicts
+            # Match Keywords (case-insensitive)
+            keyword_list = match_types.get("Keywords", [])
+            if isinstance(keyword_list, list):
+                for item in keyword_list:
+                    if isinstance(item, dict) and 'term' in item:
+                        keyword = item['term']
+                        confidence = item.get('confidence', 1.0)
+                        keyword_pattern = r"(?<!\w)" + re.escape(str(keyword).lower()) + r"(?!\w)"
+                        try:
+                            for match in re.finditer(keyword_pattern, text_lower):
+                                matches[test_type][category]["Keyword"].append({
+                                    "term": keyword,
+                                    "match": match.group(0),
+                                    "confidence": confidence,
+                                    "start": match.start(),
+                                    "end": match.end()
+                                })
+                        except re.error as e:
+                            print(f"WARNING: Regex error compiling/matching keyword '{keyword}': {e}", file=sys.stderr)
+                    else:
+                         print(f"WARNING: Skipping invalid keyword item under '{test_type}/{category}': {item}", file=sys.stderr)
+            elif keyword_list: # If it exists but isn't a list
+                 print(f"WARNING: 'Keywords' under '{test_type}/{category}' is not a list, skipping.", file=sys.stderr)
+
+            # Match Patterns (case-insensitive, applied to original text)
+            pattern_list = match_types.get("Patterns", [])
+            if isinstance(pattern_list, list):
+                for item in pattern_list:
+                    if isinstance(item, dict) and 'pattern' in item:
+                        pattern_str = item['pattern']
+                        confidence = item.get('confidence', 1.0)
+                        try:
+                            pattern = re.compile(str(pattern_str), re.IGNORECASE)
+                            for match in pattern.finditer(text):
+                                matches[test_type][category]["Pattern"].append({
+                                    "pattern": pattern_str,
+                                    "match": match.group(0),
+                                    "confidence": confidence,
+                                    "start": match.start(),
+                                    "end": match.end()
+                                })
+                        except re.error as e:
+                            print(f"WARNING: Regex error compiling/matching pattern '{pattern_str}': {e}", file=sys.stderr)
+                        except Exception as e:
+                             print(f"WARNING: Unexpected error matching pattern '{pattern_str}': {e}", file=sys.stderr)
+                    else:
+                        print(f"WARNING: Skipping invalid pattern item under '{test_type}/{category}': {item}", file=sys.stderr)
+            elif pattern_list:
+                print(f"WARNING: 'Patterns' under '{test_type}/{category}' is not a list, skipping.", file=sys.stderr)
+
+    # Convert defaultdicts back to regular dicts for cleaner JSON output
     final_matches = {}
     for test_type, categories in matches.items():
         final_matches[test_type] = {}
@@ -211,54 +221,118 @@ def process_file(text_file_path, criteria, output_dir):
         print(f"CRITICAL ERROR: Failed to save results for {base_name} to {output_path}: {e}")
         print(traceback.format_exc())
 
+def process_text_with_patterns(text: str, patterns: Dict[str, List[Dict[str, Union[str, float]]]], confidence_threshold: float = 0.0) -> List[Dict[str, Any]]:
+    """
+    Process text with the given patterns and return matches.
+    
+    Args:
+        text: The text to process
+        patterns: Dictionary containing keywords and regex patterns with confidence scores
+        confidence_threshold: Minimum confidence score for matches (0.0 to 1.0)
+        
+    Returns:
+        List of matches, each containing the matched text, position, and confidence score
+    """
+    matches = []
+    
+    # Process keywords
+    for keyword in patterns.get('keywords', []):
+        if keyword['confidence'] < confidence_threshold:
+            continue
+            
+        string = keyword['string']
+        confidence = keyword['confidence']
+        
+        # Find all non-overlapping matches
+        start = 0
+        while True:
+            pos = text.find(string, start)
+            if pos == -1:
+                break
+                
+            matches.append({
+                'text': string,
+                'start': pos,
+                'end': pos + len(string),
+                'confidence': confidence,
+                'type': 'keyword'
+            })
+            start = pos + len(string)
+    
+    # Process regex patterns
+    for pattern in patterns.get('regex_patterns', []):
+        if pattern['confidence'] < confidence_threshold:
+            continue
+            
+        string = pattern['string']
+        confidence = pattern['confidence']
+        
+        # Find all non-overlapping matches
+        for match in re.finditer(string, text):
+            matches.append({
+                'text': match.group(0),
+                'start': match.start(),
+                'end': match.end(),
+                'confidence': confidence,
+                'type': 'regex'
+            })
+    
+    # Sort matches by position and handle overlaps
+    matches.sort(key=lambda x: (x['start'], -x['confidence']))
+    non_overlapping = []
+    last_end = -1
+    
+    for match in matches:
+        if match['start'] >= last_end:
+            non_overlapping.append(match)
+            last_end = match['end']
+    
+    return non_overlapping
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Extract fields from text files based on markdown criteria.')
-    parser.add_argument('input_dir', help='Directory containing the input text or JSON files (from OCR).')
-    parser.add_argument('output_dir', help='Directory where the output JSON files with extracted fields will be saved.')
-    parser.add_argument('--criteria', default=DEFAULT_CRITERIA_FILE, help=f'Path to the markdown file containing the criteria. Default: {DEFAULT_CRITERIA_FILE}')
+def main():
+    print("DEBUG: process_ocr.py main() started.", file=sys.stderr) # Add debug print
+    parser = argparse.ArgumentParser(description="Extract fields from text files based on YAML criteria.")
+    parser.add_argument("input_dir", help="Directory containing input text or JSON files.")
+    parser.add_argument("output_dir", help="Directory to save the extracted field JSON files.")
+    parser.add_argument("--keywords-file", required=True, help="Path to the YAML criteria file.")
 
     args = parser.parse_args()
 
-    # --- Input Validation ---
-    if not os.path.isdir(args.input_dir):
-        print(f"ERROR: Input directory not found: {args.input_dir}", file=sys.stderr)
-        sys.exit(1)
-    if not os.path.isdir(args.output_dir):
-        print(f"INFO: Output directory not found: {args.output_dir}. Creating it.")
-        try:
-             os.makedirs(args.output_dir, exist_ok=True)
-        except OSError as e:
-             print(f"ERROR: Could not create output directory {args.output_dir}: {e}", file=sys.stderr)
-             sys.exit(1)
-    if not os.path.isfile(args.criteria):
-         print(f"ERROR: Criteria file not found: {args.criteria}", file=sys.stderr)
-         sys.exit(1)
+    try: # Add broad exception handling
+        # Create output directory if it doesn't exist
+        os.makedirs(args.output_dir, exist_ok=True)
 
-    # --- Load Criteria ---
-    print(f"Loading criteria from: {args.criteria}")
-    criteria_data = load_criteria_from_md(args.criteria)
-    if criteria_data is None:
-        print("FATAL: Failed to load criteria. Exiting.", file=sys.stderr)
-        sys.exit(1)
-    print("Criteria loaded successfully.")
+        # Load criteria from YAML file using the correct argument name
+        print(f"Loading criteria from: {args.keywords_file}")
+        criteria = load_criteria_from_yaml(args.keywords_file)
+        if criteria is None:
+            print("ERROR: Failed to load criteria. Exiting.", file=sys.stderr)
+            sys.exit(1) # Exit if criteria loading fails
 
-    # --- Process Files ---
-    print(f"Processing files from input directory: {args.input_dir}")
-    print(f"Saving results to output directory: {args.output_dir}")
+        # Find all processable files (.txt, .json)
+        processable_files = []
+        extensions = ('*.txt', '*.json')
+        for ext in extensions:
+             # Use Path.glob for better path handling
+             search_path = Path(args.input_dir) / ext
+             processable_files.extend(search_path.glob('*'))
 
-    input_files = glob.glob(os.path.join(args.input_dir, '*.txt')) + \
-                  glob.glob(os.path.join(args.input_dir, '*.json'))
+        total_files = len(processable_files)
+        print(f"Found {total_files} processable files in {args.input_dir}")
 
-    if not input_files:
-        print(f"WARNING: No .txt or .json files found in {args.input_dir}")
-        sys.exit(0)
+        # Process each file
+        for i, file_path in enumerate(processable_files):
+            print(f"PROGRESS:{i+1}/{total_files}") # Progress indicator for GUI
+            print(f"Processing file: {file_path.name}")
+            # Pass the Path object directly
+            process_file(str(file_path), criteria, args.output_dir)
 
-    print(f"Found {len(input_files)} files to process.")
-    processed_count = 0
+        print("Processing complete.")
+        
+    except Exception as e:
+        print(f"FATAL ERROR in process_ocr.py main: {e}", file=sys.stderr)
+        print(traceback.format_exc(), file=sys.stderr)
+        sys.exit(3) # Exit with a different code to indicate unexpected error
 
-    for file_path in input_files:
-        process_file(file_path, criteria_data, args.output_dir)
-        processed_count += 1
-
-    print(f"\nField extraction complete. Attempted processing for {processed_count} files.") 
+if __name__ == "__main__":
+    main() 
