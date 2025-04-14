@@ -310,13 +310,37 @@ class ImageProcessorUI: # (QMainWindow):
         # Moved back outside the main window definition for clarity, ensure tags are unique
         # If issues persist, they might need unique tags per instance or careful management
         if not dpg.does_item_exist("image_folder_dialog"):
-            with dpg.file_dialog(directory_selector=True, show=False, callback=self._image_folder_selected_callback, tag="image_folder_dialog", width=700 ,height=400):
+            with dpg.file_dialog(
+                directory_selector=True,
+                show=False,
+                callback=self._image_folder_selected_callback,
+                tag="image_folder_dialog",
+                width=700,
+                height=400,
+                default_path=str(Path.home())
+            ):
                 dpg.add_file_extension(".*")
         if not dpg.does_item_exist("text_folder_dialog"):
-            with dpg.file_dialog(directory_selector=True, show=False, callback=self._text_folder_selected_callback, tag="text_folder_dialog", width=700 ,height=400):
+            with dpg.file_dialog(
+                directory_selector=True,
+                show=False,
+                callback=self._text_folder_selected_callback,
+                tag="text_folder_dialog",
+                width=700,
+                height=400,
+                default_path=str(Path.home())
+            ):
                 dpg.add_file_extension(".*")
         if not dpg.does_item_exist("excel_save_dialog"):
-            with dpg.file_dialog(directory_selector=False, show=False, callback=self._save_export_callback, tag="excel_save_dialog", width=700, height=400):
+            with dpg.file_dialog(
+                directory_selector=False,
+                show=False,
+                callback=self._save_export_callback,
+                tag="excel_save_dialog",
+                width=700,
+                height=400,
+                default_path=str(Path.home())
+            ):
                  dpg.add_file_extension(".xlsx")
                  dpg.add_file_extension(".*")
 
@@ -340,7 +364,7 @@ class ImageProcessorUI: # (QMainWindow):
             # --- Field Extraction Section --- 
             dpg.add_text(f"Fields Output Dir: {self.fields_output_dir}", tag="fields_output_display_label")
             with dpg.group(horizontal=True):
-                dpg.add_button(label="View Criteria", callback=self.criteria_panel.show, tag="view_criteria_button")
+                dpg.add_button(label="View/Edit Criteria", callback=self.criteria_panel.show, tag="view_criteria_button")
                 dpg.add_button(label="Run Field Extraction", callback=self.run_field_extraction, tag="run_field_extraction_button", enabled=False)
             dpg.add_progress_bar(tag="field_progress_bar", overlay="", width=-1, show=False)
             dpg.add_text("Status: Idle", tag="field_status_label") # Dedicated status for field extraction/general
@@ -449,10 +473,68 @@ class ImageProcessorUI: # (QMainWindow):
                          all_data.append(data) # Still append even if key is missing
                 
                 if all_data:
-                    df = pd.DataFrame(all_data)
-                    # Define desired column order (Source_File first, then others)
-                    cols_in_order = ['Source_File'] + [col for col in df.columns if col != 'Source_File']
-                    df = df[cols_in_order] # Reorder columns
+                    # Create a new DataFrame with just the columns we want
+                    new_data = []
+                    for data in all_data:
+                        row = {
+                            'Source_File': data.get('Source_File', ''),
+                            'file_path': data.get('file_path', ''),
+                            'error': data.get('error', ''),
+                            'extraction_timestamp': data.get('extraction_timestamp', '')
+                        }
+                        
+                        # Map test method fields to their column names
+                        test_method_mapping = {
+                            'tuberculosis_skin_test': 'Skin Test',
+                            'tuberculosis_blood_test': 'Blood Test',
+                            'tuberculosis_radiography': 'X-Ray'
+                        }
+                        
+                        # Add test method specific columns
+                        for json_field, column_prefix in test_method_mapping.items():
+                            if json_field in data:
+                                method_data = data[json_field]
+                                row[f"{column_prefix} Administered"] = method_data.get('Administered', False)
+                                row[f"{column_prefix} Confidence"] = method_data.get('Confidence', 0)
+                                row[f"{column_prefix} Number of indicators"] = method_data.get('Number of indicators', 0)
+                            else:
+                                # Initialize with default values if method not present
+                                row[f"{column_prefix} Administered"] = False
+                                row[f"{column_prefix} Confidence"] = 0
+                                row[f"{column_prefix} Number of indicators"] = 0
+                        
+                        new_data.append(row)
+                    
+                    # Create new DataFrame with the processed data
+                    df = pd.DataFrame(new_data)
+                    
+                    # Define column order
+                    standard_columns = [
+                        'Source_File',
+                        'file_path',
+                        'error',
+                        'extraction_timestamp'
+                    ]
+                    
+                    dynamic_columns = []
+                    for column_prefix in test_method_mapping.values():
+                        dynamic_columns.extend([
+                            f"{column_prefix} Administered",
+                            f"{column_prefix} Confidence",
+                            f"{column_prefix} Number of indicators"
+                        ])
+                    
+                    cols_in_order = standard_columns + dynamic_columns
+                    
+                    # Ensure all columns exist and are in the right order
+                    for col in cols_in_order:
+                        if col not in df.columns:
+                            df[col] = None
+                    
+                    # Reorder columns
+                    df = df[cols_in_order]
+                    
+                    # Export to Excel
                     df.to_excel(save_path, index=False)
                     print(f"Successfully exported data to {save_path}")
                     if dpg.does_item_exist("status_label"):
