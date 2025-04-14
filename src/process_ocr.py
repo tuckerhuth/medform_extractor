@@ -289,10 +289,10 @@ def process_file(text_file_path, criteria, output_dir):
 
     # Initialize the final result structure
     result = {
-        "file_path": str(input_path), # Use full path string
+        "text_file_path": str(input_path),  # Renamed from file_path to text_file_path
+        "file_path": None,  # Will store the original image path
         "error": None,
-        "extraction_timestamp": datetime.now().isoformat() # Add timestamp
-        # Test method keys will be added below
+        "extraction_timestamp": datetime.now().isoformat()
     }
 
     try:
@@ -303,6 +303,9 @@ def process_file(text_file_path, criteria, output_dir):
             logging.debug(f"Reading JSON file: {input_path}")
             with open(input_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
+                # Get the original image path first
+                result["file_path"] = data.get("file_path", "")  # Get original image path
+                
                 possible_keys = ['extracted_text', 'text', 'content']
                 logging.debug(f"Searching for text keys {possible_keys} in JSON data.")
                 for key in possible_keys:

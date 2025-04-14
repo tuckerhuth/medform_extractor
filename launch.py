@@ -19,6 +19,7 @@ import queue # Added
 import dearpygui.dearpygui as dpg # Added
 # import traceback # Added for traceback handling
 import shutil # Import shutil for file copying
+import yaml # Added for YAML loading
 
 # --- Add import for CriteriaPanel --- 
 # YAML_PATH is now defined globally in launch.py
@@ -262,6 +263,7 @@ def load_criteria_from_md(md_file_path):
 class ImageProcessorUI: # (QMainWindow):
     def __init__(self):
         # Removed super().__init__()
+        self.last_excel_file = None
         self.selected_image_folder = None
         # Default to the calculated user-specific directory
         self.text_output_dir = DEFAULT_TEXT_OUTPUT_DIR
@@ -374,6 +376,7 @@ class ImageProcessorUI: # (QMainWindow):
             with dpg.group(horizontal=True):
                 # Removed Spacer - Buttons will align left
                 dpg.add_button(label="Export to Excel", callback=self.export_results_to_excel, tag="export_excel_button", enabled=False)
+                dpg.add_button(label="Open Excel", callback=self.open_last_excel, tag="open_excel_button", enabled=False)
                 dpg.add_button(label="Quit", callback=self._quit_callback, tag="quit_button")
             
             # Removed Results Table Section
@@ -457,37 +460,42 @@ class ImageProcessorUI: # (QMainWindow):
                     return
                 
                 all_data = []
+                
+                # Load test methods from YAML
+                yaml_path = Path("disease_keywords/tuberculosis.yaml")
+                with open(yaml_path, 'r', encoding='utf-8') as f:
+                    yaml_data = yaml.safe_load(f)
+                
+                # Get test methods from metadata
+                test_methods = yaml_data['metadata']['test_methods']
+                test_method_mapping = {
+                    f"tuberculosis_{method}": display_name
+                    for method, display_name in test_methods.items()
+                }
+                
+                # Process each JSON file
                 for json_file in json_files:
                     try:
                         with open(json_file, 'r', encoding='utf-8') as f:
                             data = json.load(f)
-                            # Use filename stem from JSON source as Source_File
-                            data['Source_File'] = data.get('source_text_file', json_file.stem).replace('_extracted','') # Get source from JSON if present
                             all_data.append(data)
-                    except json.JSONDecodeError as e:
+                    except Exception as e:
                         print(f"Error reading {json_file}: {e}")
                         continue
-                    except KeyError:
-                         print(f"Warning: Missing 'source_text_file' key in {json_file.name}, using filename stem.")
-                         data['Source_File'] = json_file.stem.replace('_extracted','') 
-                         all_data.append(data) # Still append even if key is missing
                 
                 if all_data:
                     # Create a new DataFrame with just the columns we want
                     new_data = []
                     for data in all_data:
+                        # Get the file paths - now using the correct field names
+                        text_file_path = data.get('text_file_path', '')  # Path to the text extract JSON
+                        original_image_path = data.get('file_path', '')  # Path to the original image
+                        
                         row = {
-                            'Source_File': data.get('Source_File', ''),
-                            'file_path': data.get('file_path', ''),
+                            'Source_File': original_image_path,  # Original image path
+                            'file_path': text_file_path,  # Text extract JSON path
                             'error': data.get('error', ''),
                             'extraction_timestamp': data.get('extraction_timestamp', '')
-                        }
-                        
-                        # Map test method fields to their column names
-                        test_method_mapping = {
-                            'tuberculosis_skin_test': 'Skin Test',
-                            'tuberculosis_blood_test': 'Blood Test',
-                            'tuberculosis_radiography': 'X-Ray'
                         }
                         
                         # Add test method specific columns
@@ -534,24 +542,66 @@ class ImageProcessorUI: # (QMainWindow):
                     # Reorder columns
                     df = df[cols_in_order]
                     
-                    # Export to Excel
-                    df.to_excel(save_path, index=False)
+                    # Export to Excel with hyperlinks
+                    writer = pd.ExcelWriter(save_path, engine='openpyxl')
+                    df.to_excel(writer, index=False)
+                    
+                    # Get the worksheet
+                    worksheet = writer.sheets['Sheet1']
+                    
+                    # Calculate relative paths from Excel file location
+                    excel_dir = Path(save_path).parent
+                    
+                    # Add hyperlinks to Source_File and file_path columns
+                    for idx, row in df.iterrows():
+                        # Add 2 to account for 1-based Excel rows and header row
+                        excel_row = idx + 2
+                        
+                        # Add hyperlink to Source_File
+                        if row['Source_File']:
+                            try:
+                                rel_path = os.path.relpath(row['Source_File'], excel_dir)
+                                cell = worksheet.cell(row=excel_row, column=1)
+                                cell.hyperlink = rel_path
+                                cell.value = Path(row['Source_File']).name  # Show just filename
+                                cell.style = "Hyperlink"
+                            except ValueError as e:
+                                # If files are on different drives, keep absolute path
+                                cell.value = row['Source_File']
+                        
+                        # Add hyperlink to file_path
+                        if row['file_path']:
+                            try:
+                                rel_path = os.path.relpath(row['file_path'], excel_dir)
+                                cell = worksheet.cell(row=excel_row, column=2)
+                                cell.hyperlink = rel_path
+                                cell.value = Path(row['file_path']).name  # Show just filename
+                                cell.style = "Hyperlink"
+                            except ValueError as e:
+                                # If files are on different drives, keep absolute path
+                                cell.value = row['file_path']
+                    
+                    # Save the workbook
+                    writer.close()
+                    
                     print(f"Successfully exported data to {save_path}")
+                    # Store the path of the exported file
+                    self.last_excel_file = save_path
                     if dpg.does_item_exist("status_label"):
                         dpg.set_value("status_label", f"Status: Exported to {save_path.name}")
+                    # Enable the Open Excel button
+                    if dpg.does_item_exist("open_excel_button"):
+                        dpg.configure_item("open_excel_button", enabled=True)
                 else:
                     print("No valid data to export")
                     if dpg.does_item_exist("status_label"):
                         dpg.set_value("status_label", "Status: No valid data to export")
-            
+                    
             except Exception as e:
-                error_msg = f"Error exporting to Excel: {str(e)}"
+                error_msg = f"Error exporting data: {str(e)}"
                 print(error_msg)
-                print(traceback.format_exc()) # Print full traceback for export errors
                 if dpg.does_item_exist("status_label"):
                     dpg.set_value("status_label", f"Status: {error_msg}")
-        else:
-            print("Excel save dialog cancelled or no selection made")
 
     def _read_stream(self, stream, stream_type, process_type):
         """Helper function to read lines from a stream (stdout/stderr) and put them in the queue."""
@@ -789,6 +839,24 @@ class ImageProcessorUI: # (QMainWindow):
             print("Error: Excel save dialog not found")
             if dpg.does_item_exist("status_label"):
                 dpg.set_value("status_label", "Status: Error - Excel save dialog not found")
+
+    def open_last_excel(self):
+        """Open the last exported Excel file."""
+        if self.last_excel_file and self.last_excel_file.exists():
+            try:
+                if sys.platform == "darwin":  # macOS
+                    subprocess.run(["open", str(self.last_excel_file)])
+                elif sys.platform == "win32":  # Windows
+                    subprocess.run(["start", "", str(self.last_excel_file)], shell=True)
+                else:  # Linux
+                    subprocess.run(["xdg-open", str(self.last_excel_file)])
+            except Exception as e:
+                print(f"Error opening Excel file: {e}")
+                if dpg.does_item_exist("status_label"):
+                    dpg.set_value("status_label", f"Status: Error opening Excel file: {e}")
+        else:
+            if dpg.does_item_exist("status_label"):
+                dpg.set_value("status_label", "Status: No Excel file available to open")
 
     def _check_script_queue(self):
         """ Check the queue for messages from the worker thread and update UI. """

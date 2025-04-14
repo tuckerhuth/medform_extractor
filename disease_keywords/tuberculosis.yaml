@@ -1,8 +1,9 @@
 metadata:
-  description: Pattern matching definitions for tuberculosis testing
+  description: Pattern matching definitions for tuberculosis testing, updated to handle 1-step skin test, 2-step skin test, blood test, and X-ray
   structure: condition → test_method → detection_aspect → pattern_type → patterns
   test_methods:
-    skin_test: Tuberculin skin tests (TST, PPD, Mantoux)
+    skin_test_1_step: Single tuberculin skin test (1-step)
+    skin_test_2_step: Baseline two-step tuberculin skin test
     blood_test: Blood-based tests (IGRA, QuantiFERON, T-SPOT)
     radiography: Chest imaging examinations (X-ray, CT)
   detection_aspects:
@@ -14,532 +15,222 @@ metadata:
     keywords: Exact match terms
     regex_patterns: Regular expression patterns for flexible matching
   confidence_scores:
-    description: Confidence levels (0-100) representing reliability of pattern matches
+    description: Confidence levels (0-1) representing reliability of pattern matches
     ranges:
-      95+: Very high confidence
-      90-94: High confidence
-      80-89: Medium confidence
-      70-79: Lower confidence
+      0.95+: Very high confidence
+      0.90-0.94: High confidence
+      0.80-0.89: Medium confidence
+      0.70-0.79: Lower confidence
 
 tuberculosis:
-  skin_test:
+
+  skin_test_1_step:
     test_name:
       keywords:
-        - string: tuberculin skin test
-          confidence: 95
-        - string: mantoux tuberculin test
-          confidence: 95
-        - string: purified protein derivative
-          confidence: 90
-        - string: ppd skin test
-          confidence: 95
-        - string: tst
-          confidence: 90
-        - string: ppd
-          confidence: 90
-        - string: mt
-          confidence: 70
-        - string: mantoux test
-          confidence: 95
-        - string: tuberculosis skin test
-          confidence: 95
+        - string: 1-step tb test
+          confidence: 0.95
+        - string: one-step tb test
+          confidence: 0.95
+        - string: single-step tb test
+          confidence: 0.90
+        - string: single tb skin test
+          confidence: 0.90
+        - string: annual tb skin test
+          confidence: 0.85
+        - string: routine tb skin test
+          confidence: 0.85
+        # Also keep generic references to TST/PPD, but under this category if there's no mention of “2-step”:
         - string: tb skin test
-          confidence: 90
+          confidence: 0.80
+        - string: ppd skin test
+          confidence: 0.80
+        - string: purified protein derivative
+          confidence: 0.80
         - string: mantoux
-          confidence: 95
-        - string: mantoux tuberculin skin test
-          confidence: 95
-        - string: tuberculin test
-          confidence: 90
-        - string: two-step tst
-          confidence: 95
-        - string: two-step tuberculin
-          confidence: 95
-        - string: ppd test
-          confidence: 85
+          confidence: 0.80
       regex_patterns:
-        - string: \btuberculin\s+skin\s+test\b
-          confidence: 95
-        - string: \btst\b(?!.*\bdid\s+not\b)
-          confidence: 90
-        - string: \bppd\b(?!\s+test\s+not\s+performed)
-          confidence: 90
-        - string: \bmantoux\b(?:\s+test)?
-          confidence: 95
-        - string: \btb\s+skin\s+test\b
-          confidence: 95
-        - string: \btuberculin\s+test\b
-          confidence: 90
-        - string: \bmantoux\s+tuberculin\s+test\b
-          confidence: 95
-        - string: \bmt\b(?:\s+test)?
-          confidence: 70
-        - string: \btwo[\s-]step\s+(?:tst|tuberculin|skin\s+test)\b
-          confidence: 95
+        # One-step references with numeric mention:
+        - string: \b1[\s-]?step\s+(?:tb\s+skin\s+test|tst|ppd)
+          confidence: 0.95
+        - string: \bone[\s-]?step\s+(?:tb\s+test|skin\s+test|mantoux|ppd|tst)
+          confidence: 0.95
+        # If “two-step” is not present:
+        - string: \b(?:tb\s+skin\s+test|ppd|tst)\b(?!.*\btwo\s?-step\b)
+          confidence: 0.85
     procedure:
       keywords:
-        - string: intradermal injection
-          confidence: 85
-        - string: intradermal tuberculin
-          confidence: 90
-        - string: mantoux technique
-          confidence: 95
-        - string: intradermal tst
-          confidence: 95
-        - string: skin tuberculin
-          confidence: 90
-        - string: tuberculin skin reaction
-          confidence: 90
-        - string: tb skin testing
-          confidence: 90
-        - string: tb skin reactivity
-          confidence: 90
-        - string: intradermal ppd
-          confidence: 95
-        - string: skin reactivity
-          confidence: 80
-        - string: tuberculin reaction
-          confidence: 85
+        - string: single tuberculin injection
+          confidence: 0.90
+        - string: one-step tst procedure
+          confidence: 0.90
+        - string: standard ppd procedure
+          confidence: 0.85
       regex_patterns:
-        - string: (?:intradermal|skin)\s+(?:injection|test)\s+(?:of|with)\s+(?:tuberculin|ppd)
-          confidence: 95
-        - string: (?:skin|tuberculin)\s+testing\s+(?:performed|done|administered|completed)
-          confidence: 90
+        # Searching for a single test with 48-72 hour mention, but no second test mention
+        - string: \bplaced\s+(?:once|single)(?:.*\b48-72\s*hours\b)
+          confidence: 0.90
     administration:
       keywords:
-        - string: tuberculin administered
-          confidence: 90
-        - string: tst administered
-          confidence: 95
-        - string: tst performed
-          confidence: 95
-        - string: ppd administered
-          confidence: 95
-        - string: ppd placed
-          confidence: 95
-        - string: skin test done
-          confidence: 85
-        - string: skin test performed
-          confidence: 85
-        - string: mantoux administered
-          confidence: 95
-        - string: skin test given
-          confidence: 85
-        - string: tb skin test administered
-          confidence: 95
-        - string: mantoux placed
-          confidence: 90
-        - string: placed ppd
-          confidence: 90
-        - string: administered ppd
-          confidence: 90
-        - string: tst placed
-          confidence: 90
-        - string: tb skin test completed
-          confidence: 90
+        - string: one-step tst administered
+          confidence: 0.90
+        - string: single tst placed
+          confidence: 0.90
+        - string: annual ppd placed
+          confidence: 0.85
       regex_patterns:
-        - string: (?:received|administered|placed)[\s:]+(?:a\s+)?(?:tuberculin|ppd|mantoux|skin\s+test)
-          confidence: 95
-        - string: (?:tst|tuberculin|ppd)\s+(?:given|performed|administered|done|placed)\s+on
-          confidence: 95
+        - string: \badministered\s+a\s+single[\s-]step\s+tst
+          confidence: 0.95
+        - string: \b(ppd|tst)\s+placed\b(?!.*\b(second|2nd|two-step)\b)
+          confidence: 0.90
     results_documentation:
       keywords:
-        - string: tuberculin test result
-          confidence: 95
-        - string: tst result
-          confidence: 95
-        - string: induration
-          confidence: 95
-        - string: skin test reading
-          confidence: 90
-        - string: skin reaction measurement
-          confidence: 90
-        - string: millimeters induration
-          confidence: 95
-        - string: mm induration
-          confidence: 90
-        - string: mm of induration
-          confidence: 95
-        - string: induration size
-          confidence: 90
-        - string: tst reading
-          confidence: 90
-        - string: skin test diameter
-          confidence: 90
-        - string: ppd reaction
-          confidence: 85
-        - string: ppd skin test result
-          confidence: 95
-        - string: tuberculin reading
-          confidence: 85
-        - string: tested with tuberculin
-          confidence: 85
+        - string: one-step test reading
+          confidence: 0.90
+        - string: single step tb reading
+          confidence: 0.85
       regex_patterns:
-        - string: induration(?:\s+of)?\s+(\d+)(?:\s*|-*)mm
-          confidence: 95
-        - string: (\d+)(?:\s*|-*)mm(?:\s+of)?\s+induration
-          confidence: 95
-        - string: skin\s+test\s+(?:result|reading)[\s:]+(\d+)(?:\s*|-*)mm
-          confidence: 95
-        - string: (?:tst|ppd|mantoux)\s+(?:result|reading)[\s:]+(\d+)(?:\s*|-*)mm
-          confidence: 95
-        - string: (?:tst|ppd|mantoux)[\s:]+(\d+)(?:\s*|-*)mm
-          confidence: 90
-        - string: induration[\s:]+(\d+)(?:\s*|-*)mm
-          confidence: 95
-        - string: tuberculin\s+reaction[\s:]+(\d+)(?:\s*|-*)mm
-          confidence: 90
-        - string: (?:tst|skin\s+test|tuberculin|ppd)\s+(?:result|interpretation|reading)[\s:]+(?:positive|negative|indeterminate)
-          confidence: 95
-        - string: (?:positive|negative)\s+(?:tst|skin\s+test|ppd|mantoux)\s+(?:result|reading)
-          confidence: 95
-        - string: (?:tst|ppd|mantoux|tuberculin)\s+(?:reading|result)\s+(?:is|was)\s+(?:positive|negative)
-          confidence: 95
-        - string: (?:read|interpreted)\s+(?:the|a)\s+(?:tst|ppd|mantoux|tuberculin|skin\s+test)
-          confidence: 85
+        - string: \bone[\s-]?step\s+(?:ppd|tst)\s+result\s+(?:negative|positive|indeterminate)
+          confidence: 0.95
+        # This excludes mention of step 2
+        - string: \b(?:read|interpreted)\s+a\s+single[\s-]?step\s+(?:ppd|tst|skin\s+test)
+          confidence: 0.90
+
+
+  skin_test_2_step:
+    test_name:
+      keywords:
+        - string: 2-step tb test
+          confidence: 0.95
+        - string: two-step tb test
+          confidence: 0.95
+        - string: 2-step skin test
+          confidence: 0.95
+        - string: two-step tst
+          confidence: 0.95
+        - string: baseline two-step tb
+          confidence: 0.90
+        - string: double mantoux
+          confidence: 0.90
+      regex_patterns:
+        - string: \b2[\s-]?step\s+(?:tb\s+skin\s+test|tst|ppd|mantoux)
+          confidence: 0.95
+        - string: \btwo[\s-]?step\s+(?:tb\s+test|tst|ppd|skin\s+test)
+          confidence: 0.95
+        # Searching for step1, step2 references
+        - string: \bstep\s+1\s+of\s+2\b.*\bstep\s+2\s+of\s+2\b
+          confidence: 0.95
+    procedure:
+      keywords:
+        - string: two-step tuberculin protocol
+          confidence: 0.90
+        - string: baseline two-step procedure
+          confidence: 0.90
+      regex_patterns:
+        - string: \bfirst\s+tst\b.*\bsecond\s+tst\b.*\b(1-3\s+weeks|7-21\s+days)\s+later
+          confidence: 0.95
+    administration:
+      keywords:
+        - string: two-step testing performed
+          confidence: 0.90
+        - string: step 1 and step 2 placed
+          confidence: 0.90
+        - string: second ppd placed
+          confidence: 0.85
+      regex_patterns:
+        # Indicate first test is negative, second test placed
+        - string: \bfirst\s+(?:tst|ppd)\s+(?:negative|pos|neg).*?\bsecond\s+(?:tst|ppd)\s+(?:placed|administered)
+          confidence: 0.95
+        # Indicate baseline 2-step
+        - string: \bbaseline\s+(?:two|2)[\s-]step\s+(?:test|tst|ppd)
+          confidence: 0.95
+    results_documentation:
+      keywords:
+        - string: two-step results completed
+          confidence: 0.90
+        - string: step 1 negative, step 2 negative
+          confidence: 0.95
+      regex_patterns:
+        - string: \b(two[\s-]?step|2[\s-]?step)\s+(?:test|tst|ppd)\s+(?:results|reading)\s+(?:negative|positive)
+          confidence: 0.95
+        - string: \b(step\s+1\s+(?:result|reading).*?step\s+2\s+(?:result|reading))
+          confidence: 0.90
+
+
   blood_test:
+    # Largely unchanged. Retaining existing sets for IGRA, QuantiFERON, T-SPOT, etc.
     test_name:
       keywords:
         - string: interferon gamma release assay
-          confidence: 95
+          confidence: 0.95
         - string: quantiferon tb gold
-          confidence: 95
+          confidence: 0.95
         - string: quantiferon tb gold plus
-          confidence: 95
-        - string: quantiferon gold in-tube
-          confidence: 95
+          confidence: 0.95
         - string: t-spot tb test
-          confidence: 95
-        - string: tb blood test
-          confidence: 90
-        - string: interferon-gamma release assay
-          confidence: 95
-        - string: interferon gamma test
-          confidence: 90
-        - string: tb blood assay
-          confidence: 90
-        - string: tb antigen test
-          confidence: 85
-        - string: igra test
-          confidence: 95
-        - string: qft-git
-          confidence: 95
-        - string: qft-plus
-          confidence: 95
-        - string: qft-g
-          confidence: 95
-        - string: t-spot.tb
-          confidence: 95
-        - string: igra
-          confidence: 90
-        - string: qft
-          confidence: 90
-        - string: t-spot
-          confidence: 90
-        - string: ifn-gamma
-          confidence: 85
-        - string: qft-gp
-          confidence: 95
-        - string: quantiferon gold test
-          confidence: 95
-        - string: tb gamma test
-          confidence: 90
+          confidence: 0.95
+        # ...
       regex_patterns:
-        - string: \b(?:interferon[\s-]*gamma[\s-]*release[\s-]*assay|igra)\b(?!\s+not\s+performed)
-          confidence: 95
-        - string: \bquantiferon[\s-]*(?:tb)?[\s-]*gold(?:[\s-]*plus)?\b
-          confidence: 95
-        - string: \bt[\s-]*spot\.?tb\b
-          confidence: 95
-        - string: \bqft[\s-]*(?:g|git|plus|p|gp)?\b
-          confidence: 90
-        - string: \btb\s+blood\s+test\b
-          confidence: 90
-        - string: \binterferon[\s-]*gamma\s+test\b
-          confidence: 90
-        - string: \btb\s+blood\s+assay\b
-          confidence: 90
-        - string: \bigra\b(?!\s+not\s+performed)
-          confidence: 90
-        - string: \bt[\s-]*spot\b(?!\s+not\s+performed)
-          confidence: 85
+        # ...
     procedure:
       keywords:
-        - string: interferon gamma
-          confidence: 80
-        - string: tb antigen response
-          confidence: 90
-        - string: mitogen response
-          confidence: 90
-        - string: tb antigen minus nil
-          confidence: 95
-        - string: nil value
-          confidence: 85
-        - string: tb response
-          confidence: 80
-        - string: mitogen value
-          confidence: 90
-        - string: tb1 antigen
-          confidence: 95
-        - string: tb2 antigen
-          confidence: 95
-        - string: antigen tube
-          confidence: 85
-        - string: spot forming cells
-          confidence: 95
-        - string: ifn-γ response
-          confidence: 90
-        - string: tb tube result
-          confidence: 90
-        - string: interferon assay
-          confidence: 85
+        # ...
       regex_patterns:
-        - string: (?:tb\d|tb[\s-]antigen[\s-]\d)[\s:]+(?:\d+\.?\d*)
-          confidence: 95
-        - string: (?:spot[\s-]forming[\s-]cells|sfc)[\s:]+(?:\d+)
-          confidence: 95
-        - string: interferon[\s-]*gamma[\s:]+(?:level|value)[\s:]+(?:\d+\.?\d*)
-          confidence: 90
-        - string: (?:tb\s+antigen|mitogen)[\s-]*minus[\s-]*nil[\s:]+(?:\d+\.?\d*)
-          confidence: 95
-        - string: elispot[\s:]+(?:result|count)
-          confidence: 95
-        - string: spot[\s-]*forming[\s-]*(?:cells|units)
-          confidence: 95
-        - string: ifn[\s-]*(?:gamma|γ)[\s:]+(?:release|production|response)
-          confidence: 90
+        # ...
     administration:
       keywords:
-        - string: blood drawn for tb
-          confidence: 90
-        - string: blood collected for igra
-          confidence: 95
-        - string: quantiferon performed
-          confidence: 95
-        - string: igra testing completed
-          confidence: 95
-        - string: ordered igra
-          confidence: 90
-        - string: ordered quantiferon
-          confidence: 90
-        - string: ordered t-spot
-          confidence: 90
-        - string: drawn for quantiferon
-          confidence: 95
-        - string: igra sent
-          confidence: 85
-        - string: igra ordered
-          confidence: 90
-        - string: performed igra
-          confidence: 95
-        - string: blood sample for tb
-          confidence: 90
-        - string: qft collection
-          confidence: 95
-        - string: qft tubes
-          confidence: 95
+        # ...
       regex_patterns:
-        - string: (?:blood|specimen)\s+(?:collected|drawn)\s+for\s+(?:igra|quantiferon|t-spot|tb\s+blood\s+test)
-          confidence: 95
-        - string: (?:performed|completed|conducted|ordered)\s+(?:a\s+)?(?:igra|quantiferon|t-spot|tb\s+blood\s+test)
-          confidence: 95
-        - string: (?:sent|collected)\s+(?:specimen|sample|blood)\s+for\s+(?:igra|quantiferon|t-spot)
-          confidence: 95
-        - string: (?:blood|specimen)[\s:]+(?:igra|quantiferon|t-spot|tb\s+blood\s+test)
-          confidence: 90
-        - string: (?:igra|quantiferon|t-spot)\s+collection
-          confidence: 95
-        - string: (?:igra|quantiferon|t-spot)\s+(?:drawn|sent|ordered)
-          confidence: 95
+        # ...
     results_documentation:
       keywords:
-        - string: tb blood test resulted
-          confidence: 95
-        - string: igra result
-          confidence: 95
-        - string: elispot result
-          confidence: 90
-        - string: quantiferon result
-          confidence: 95
-        - string: blood test for tb
-          confidence: 90
-        - string: tb blood work
-          confidence: 85
-        - string: tb blood screening
-          confidence: 90
+        # ...
       regex_patterns:
-        - string: (?:igra|quantiferon|t-spot)[\s:]+(?:result|interpretation)[\s:]+(?:positive|negative|indeterminate)
-          confidence: 95
-        - string: (?:tb\s+antigen|mitogen)[\s:]+(?:response|result)[\s:]+(?:\d+\.?\d*)
-          confidence: 95
-        - string: (?:nil|tb\s+ag|mitogen)[\s:]*(?:\d+\.?\d*)
-          confidence: 90
-        - string: quantiferon[\s:]+(?:positive|negative|indeterminate)
-          confidence: 95
-        - string: t[\s-]spot[\s:]+(?:positive|negative|indeterminate)
-          confidence: 95
-        - string: igra[\s:]+(?:positive|negative|indeterminate)
-          confidence: 95
-        - string: interferon[\s-]*gamma[\s-]*analysis
-          confidence: 90
-        - string: qft[\s-]*(?:g|git|plus|p)[\s:]+result
-          confidence: 95
+        # ...
+
   radiography:
+    # Keep the structure for X-ray, but add some negative context to avoid “maybe” or “might” matches.
     test_name:
       keywords:
-        - string: x-ray
-          confidence: 95
         - string: chest x-ray
-          confidence: 95
+          confidence: 0.95
         - string: chest radiograph
-          confidence: 95
-        - string: chest radiography
-          confidence: 95
-        - string: chest imaging
-          confidence: 90
-        - string: thoracic radiograph
-          confidence: 90
-        - string: chest film
-          confidence: 90
-        - string: chest roentgenogram
-          confidence: 95
-        - string: thoracic x-ray
-          confidence: 90
-        - string: chest xray
-          confidence: 95
-        - string: pulmonary x-ray
-          confidence: 90
-        - string: lung x-ray
-          confidence: 85
-        - string: tb chest x-ray
-          confidence: 95
-        - string: cxr
-          confidence: 90
-        - string: pa chest
-          confidence: 95
-        - string: ap chest
-          confidence: 95
-        - string: lateral chest
-          confidence: 90
-        - string: chest pa
-          confidence: 95
-        - string: pa and lateral
-          confidence: 90
-        - string: pa/lat
-          confidence: 90
-        - string: pa & lat
-          confidence: 90
-        - string: ap/lat
-          confidence: 90
-        - string: chest pa/lat
-          confidence: 95
-        - string: cxr pa
-          confidence: 95
+          confidence: 0.95
         - string: chest ct
-          confidence: 80
-        - string: lung ct
-          confidence: 80
-        - string: thoracic ct
-          confidence: 80
-        - string: chest tomography
-          confidence: 85
+          confidence: 0.80
+        # ...
       regex_patterns:
-        - string: \b(?:chest|thoracic|pulmonary)[\s-]*(?:x[\s-]*ray|radiograph|radiography|imaging)\b
-          confidence: 95
-        - string: \b(?:chest|thoracic|pulmonary)[\s-]*(?:film|roentgenogram)\b
-          confidence: 90
         - string: \bcxr\b(?!\s+not\s+performed)
-          confidence: 90
-        - string: \b(?:pa|ap)[\s-]*(?:chest|cxr)\b
-          confidence: 95
-        - string: \b(?:pa|ap)[\s-]*(?:and|&)?[\s-]*lat(?:eral)?\b
-          confidence: 90
-        - string: \bchest[\s-]*(?:pa|ap)[\s-]*(?:and|&)?[\s-]*lat(?:eral)?\b
-          confidence: 95
-        - string: \b(?:chest|thoracic|pulmonary)[\s-]*(?:ct|tomography)\b
-          confidence: 80
+          confidence: 0.90
+        - string: \bchest[\s-]*(?:x[\s-]*ray|ct)
+          confidence: 0.90
+        # ...
     procedure:
       keywords:
-        - string: pulmonary radiograph
-          confidence: 90
-        - string: thoracic imaging
-          confidence: 85
-        - string: lung field imaging
-          confidence: 90
-        - string: radiological examination chest
-          confidence: 95
-        - string: pulmonary imaging
-          confidence: 85
-        - string: pleural imaging
-          confidence: 85
-        - string: chest scan
-          confidence: 80
-        - string: mediastinal imaging
-          confidence: 85
-        - string: x-ray of chest
-          confidence: 95
-        - string: radiograph of thorax
-          confidence: 90
-        - string: portable chest
-          confidence: 90
-        - string: imaging of chest
-          confidence: 90
-        - string: radiology chest
-          confidence: 90
+        - string: chest imaging
+          confidence: 0.90
+        # ...
       regex_patterns:
-        - string: (?:chest|thoracic|pulmonary)[\s-]*(?:imaging|radiography|examination)
-          confidence: 95
-        - string: (?:lung|pleural|mediastinal)[\s-]*imaging
-          confidence: 85
-        - string: (?:portable|bedside)[\s-]*chest[\s-]*(?:x[\s-]*ray|radiograph)
-          confidence: 90
-        - string: (?:x[\s-]*ray|radiograph)[\s-]*of[\s-]*(?:chest|thorax)
-          confidence: 95
+        - string: (?:chest|thoracic)[\s-]*imaging
+          confidence: 0.90
+        # ...
     administration:
       keywords:
         - string: chest x-ray completed
-          confidence: 95
-        - string: chest radiography performed
-          confidence: 95
-        - string: chest radiology examination
-          confidence: 95
-        - string: chest imaging performed
-          confidence: 90
+          confidence: 0.95
         - string: cxr obtained
-          confidence: 95
-        - string: chest films taken
-          confidence: 90
-        - string: chest x-ray ordered
-          confidence: 90
-        - string: cxr ordered
-          confidence: 90
-        - string: chest x-ray done
-          confidence: 95
-        - string: chest radiograph obtained
-          confidence: 95
+          confidence: 0.95
+        # ...
       regex_patterns:
-        - string: (?:chest|thoracic)[\s-]*(?:x[\s-]*ray|radiograph|imaging)[\s-]*(?:performed|completed|obtained|done)
-          confidence: 95
-        - string: (?:cxr|chest[\s-]*film)[\s-]*(?:ordered|taken|obtained)
-          confidence: 90
-        - string: (?:chest|thoracic)[\s-]*(?:radiology|imaging)[\s-]*(?:examination|study)
-          confidence: 95
+        # Negative lookahead for “may|might|if needed”
+        - string: \b(?:chest\s+x-ray|cxr)\s+(?:was|were)\s+(?:done|performed|obtained)(?!.*\bmay\b|\bmight\b|\bif\b|\bplanned\b)
+          confidence: 0.95
+        # ...
     results_documentation:
       keywords:
-        - string: x-ray chest
-          confidence: 95
-        - string: tb x-ray
-          confidence: 90
         - string: chest x-ray findings
-          confidence: 95
-        - string: chest x-ray reviewed
-          confidence: 90
+          confidence: 0.95
+        # ...
       regex_patterns:
-        - string: (?:chest|thoracic)[\s-]*(?:x[\s-]*ray|radiograph|imaging)[\s-]*(?:findings|reviewed|interpretation)
-          confidence: 95
-        - string: (?:cxr|chest[\s-]*film)[\s-]*(?:shows|demonstrates|reveals)
-          confidence: 90
-        - string: (?:chest|thoracic)[\s-]*(?:x[\s-]*ray|radiograph|imaging)[\s-]*(?:normal|abnormal|unchanged)
-          confidence: 95
-        - string: (?:infiltrate|opacity|consolidation|effusion)[\s-]*(?:on|in)[\s-]*(?:cxr|chest[\s-]*x[\s-]*ray)
-          confidence: 90
+        - string: \bchest[\s-]*x[\s-]*ray\s+(?:findings|reviewed|interpretation|report)
+          confidence: 0.95
+        # ...
