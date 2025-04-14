@@ -634,22 +634,50 @@ class ImageProcessorUI: # (QMainWindow):
             if dpg.does_item_exist("run_field_extraction_button"):
                 dpg.configure_item("run_field_extraction_button", enabled=False)
 
-            # Prepare command - Use the imported YAML_PATH directly
-            process_ocr_script = os.path.join(self.script_dir, PROCESS_OCR_SCRIPT)
+            # Prepare command - Use BASE_PATH for script location
+            # Determine the correct path based on running mode (script vs bundle)
+            # Define PROCESS_OCR_SCRIPT name
+            PROCESS_OCR_SCRIPT = "process_ocr.py" # Make sure this is defined
+            if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+                # Bundled: Script was added to root using --add-data src/process_ocr.py:.
+                # Therefore, it should be directly under BASE_PATH in the bundle.
+                process_ocr_script_path = BASE_PATH / PROCESS_OCR_SCRIPT 
+            else:
+                # Script: Script is inside the 'src' directory relative to BASE_PATH
+                process_ocr_script_path = BASE_PATH / "src" / PROCESS_OCR_SCRIPT
+            
+            print(f"DEBUG [run_field_extraction]: Determined process_ocr_script_path = {process_ocr_script_path}")
+
+            # Check if the resolved script path actually exists
+            if not process_ocr_script_path.exists():
+                print(f"ERROR: Field extraction script not found at calculated path: {process_ocr_script_path}")
+                # Update UI and re-enable buttons
+                if dpg.does_item_exist("field_status_label"): dpg.set_value("field_status_label", f"Status: Error - Script not found.")
+                if dpg.does_item_exist("run_text_extraction_button"): dpg.configure_item("run_text_extraction_button", enabled=self.selected_image_folder is not None)
+                if dpg.does_item_exist("run_field_extraction_button"): dpg.configure_item("run_field_extraction_button", enabled=True) # Allow retry?
+                return
+
+            # CRITERIA_YAML_PATH is already an absolute path
             if not Path(CRITERIA_YAML_PATH).exists():
-                 print(f"ERROR: Criteria YAML file not found at {CRITERIA_YAML_PATH}")
-                 # Update UI to show error and re-enable buttons
-                 if dpg.does_item_exist("field_status_label"): dpg.set_value("field_status_label", f"Status: Criteria file missing: {Path(CRITERIA_YAML_PATH).name}")
-                 if dpg.does_item_exist("run_text_extraction_button"): dpg.configure_item("run_text_extraction_button", enabled=self.selected_image_folder is not None)
-                 if dpg.does_item_exist("run_field_extraction_button"): dpg.configure_item("run_field_extraction_button", enabled=any(self.text_output_dir.glob('*.json')))
-                 return # Stop execution if criteria file is missing
+                print(f"ERROR: Criteria YAML file not found at {CRITERIA_YAML_PATH}")
+                # Update UI to show error and re-enable buttons
+                if dpg.does_item_exist("field_status_label"):
+                    dpg.set_value("field_status_label", f"Status: Criteria file missing: {Path(CRITERIA_YAML_PATH).name}")
+                if dpg.does_item_exist("run_text_extraction_button"):
+                    dpg.configure_item("run_text_extraction_button", enabled=self.selected_image_folder is not None)
+                if dpg.does_item_exist("run_field_extraction_button"):
+                    dpg.configure_item("run_field_extraction_button", enabled=any(self.text_output_dir.glob('*.json')))
+                return # Stop execution if criteria file is missing
                  
+            # Re-apply fix: Arguments for process_ocr.py are positional, not flags
             command = [
-                sys.executable,
-                process_ocr_script,
-                '--input-dir', str(self.text_output_dir),    # Use flag
-                '--output-dir', str(self.fields_output_dir),   # Use flag
-                '--keywords-file', str(CRITERIA_YAML_PATH)           # Use correct flag name
+                sys.executable, # Use sys.executable to ensure using the same python env
+                str(process_ocr_script_path),
+                # Positional arguments for input/output directories
+                str(self.text_output_dir),     # Input dir (positional)
+                str(self.fields_output_dir),    # Output dir (positional)
+                # Flag for keywords file
+                '--keywords-file', str(CRITERIA_YAML_PATH)
             ]
 
             # Start processing in a new thread

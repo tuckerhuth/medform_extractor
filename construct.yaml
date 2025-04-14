@@ -1,0 +1,36 @@
+name: ImageExtractor
+version: 1.0.0
+
+channels:
+  - conda-forge
+  - defaults
+
+specs:
+  - python=3.11 # Ensure this matches environment.yml
+  - pip
+  # Add any absolutely essential packages needed *by the installer itself*
+  # Usually just python and pip are enough here, the rest comes from environment.yml
+
+environment_file: environment.yml
+
+# Installer customizations (optional but recommended)
+# license_file: LICENSE.txt # Optional: Add a license file if you have one
+welcome_image: welcome.png # Optional: A 164x314 PNG image
+header_image: header.png # Optional: A 150x57 PNG image
+# icon_image: icon.png # Optional: An icon image
+
+# Default install path suggestion (can be relative)
+# default_prefix: ~/ImageExtractorApp
+
+# Script to run after installation (e.g., create desktop shortcut - complex on macOS)
+# post_install: post_install.sh
+
+# macOS specific settings
+installer_type: sh # Create a .sh installer, simpler than pkg for this case
+
+# You might need to add signing information here for distribution
+# osx_signing_identity: "Developer ID Application: Your Name (TEAMID)"
+# osx_signing_notarize: true
+
+# Keep the created environment after install
+keep_pkgs: true 

@@ -1,0 +1,28 @@
+name: image_extract_dpg
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11 # Match your venv python version
+  - pip
+  # Core UI and processing
+  # - dearpygui # Removed from conda dependencies
+  - pandas
+  - pillow
+  - numpy<2 # Explicitly use numpy < 2 due to earlier warnings
+  - openpyxl
+  - pyyaml
+  # OCR related
+  # Optional but often helpful for packaging/path issues
+  - importlib_resources
+  # Other potentially relevant dependencies from pip freeze
+  # Add others if you know they are directly used by your code
+  - requests
+  - nltk
+  - spacy
+  # - pyobjc # Moved to pip section
+  - pip:
+    - dearpygui # Added to pip dependencies
+    - pyobjc # Added pyobjc here
+    # Install spacy model via pip using its direct download URL
+    - https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl#sha256=1932429db727d4bff3deed6b34cfc05df17794f4a52eeb26cf8928f7c1a0fb85 
