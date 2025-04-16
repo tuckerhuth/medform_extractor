@@ -563,7 +563,7 @@ class ImageProcessorUI: # (QMainWindow):
                                 rel_path = os.path.relpath(row['Source_File'], excel_dir)
                                 cell = worksheet.cell(row=excel_row, column=1)
                                 cell.hyperlink = rel_path
-                                cell.value = Path(row['Source_File']).name  # Show just filename
+                                cell.value = row['Source_File']  # Show full filepath instead of just filename
                                 cell.style = "Hyperlink"
                             except ValueError as e:
                                 # If files are on different drives, keep absolute path

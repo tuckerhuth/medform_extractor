@@ -1,1 +1,0 @@
-conda activate image_extract && cd /Users/tuckerhuth/Documents/image_extract && python launch.py
